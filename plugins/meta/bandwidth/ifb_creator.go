@@ -57,7 +57,8 @@ func CreateIngressQdisc(rateInBits, burstInBits uint64, hostDeviceName string) e
 	return createTBF(rateInBits, burstInBits, hostDevice.Attrs().Index)
 }
 
-func CreateEgressQdisc(rateInBits, burstInBits uint64, hostDeviceName string, ifbDeviceName string) error {
+func CreateEgressQdisc(rateInBits, burstInBits uint64, excludeSubnets []string, hostDeviceName string, ifbDeviceName string) error {
+
 	ifbDevice, err := netlink.LinkByName(ifbDeviceName)
 	if err != nil {
 		return fmt.Errorf("get ifb device: %s", err)
@@ -105,18 +106,16 @@ func CreateEgressQdisc(rateInBits, burstInBits uint64, hostDeviceName string, if
 	}
 
 	// throttle traffic on ifb device
-	err = createTBF(rateInBits, burstInBits, ifbDevice.Attrs().Index)
+	err = createHTB(rateInBits, burstInBits, ifbDevice.Attrs().Index, excludeSubnets)
 	if err != nil {
 		return fmt.Errorf("create ifb qdisc: %s", err)
 	}
 	return nil
 }
 
-func createTBF(rateInBits, burstInBits uint64, linkIndex int) error {
+func createHTB(rateInBits, burstInBits uint64, linkIndex int, excludeSubnets []string) error {
 	// Equivalent to
-	// tc qdisc add dev link root tbf
-	//		rate netConf.BandwidthLimits.Rate
-	//		burst netConf.BandwidthLimits.Burst
+	// tc qdisc add dev link root htb handle :1 default 1
 	if rateInBits <= 0 {
 		return fmt.Errorf("invalid rate: %d", rateInBits)
 	}
@@ -126,23 +125,91 @@ func createTBF(rateInBits, burstInBits uint64, linkIndex int) error {
 	rateInBytes := rateInBits / 8
 	burstInBytes := burstInBits / 8
 	bufferInBytes := buffer(rateInBytes, uint32(burstInBytes))
-	latency := latencyInUsec(latencyInMillis)
-	limitInBytes := limit(rateInBytes, latency, uint32(burstInBytes))
+	// latency := latencyInUsec(latencyInMillis)
+	// limitInBytes := limit(rateInBytes, latency, uint32(burstInBytes))
 
-	qdisc := &netlink.Tbf{
+	qdisc := &netlink.Htb{
 		QdiscAttrs: netlink.QdiscAttrs{
 			LinkIndex: linkIndex,
 			Handle:    netlink.MakeHandle(1, 0),
 			Parent:    netlink.HANDLE_ROOT,
 		},
-		Limit:  limitInBytes,
-		Rate:   rateInBytes,
-		Buffer: bufferInBytes,
+		Defcls: 1,
 	}
+
 	err := netlink.QdiscAdd(qdisc)
 	if err != nil {
 		return fmt.Errorf("create qdisc: %s", err)
 	}
+
+	// Now we create two classes, the class 1 subject to the rate limit
+	// And another class that will concern all the subnets we want to exclude from QoS
+
+	class1 := &netlink.HtbClass{
+		ClassAttrs: netlink.ClassAttrs{
+			LinkIndex: qdisc.LinkIndex,
+			Handle:    netlink.MakeHandle(1, 1),
+			Parent:    qdisc.Handle,
+		},
+		Rate:   rateInBytes,
+		Buffer: bufferInBytes,
+	}
+
+	err = netlink.ClassAdd(class1)
+	if err != nil {
+		return fmt.Errorf("create default htb class: %s", err)
+	}
+
+	uncappedRate := ^uint64(0)
+	uncappedBuffer := buffer(uncappedRate, uint32(4000000000))
+	class2 := &netlink.HtbClass{
+		ClassAttrs: netlink.ClassAttrs{
+			LinkIndex: qdisc.LinkIndex,
+			Handle:    netlink.MakeHandle(1, 2),
+			Parent:    qdisc.Handle,
+		},
+		Rate:   uncappedRate,
+		Buffer: uncappedBuffer,
+	}
+
+	err = netlink.ClassAdd(class2)
+	if err != nil {
+		return fmt.Errorf("create unshaped htb class: %s", err)
+	}
+
+	filters := make([]netlink.U32, 0, 10)
+
+	for _, subnet := range subnets {
+
+		_, nw, err := net.ParseCIDR(subnet)
+		if err != nil {
+			return err
+		}
+		isIpv4 := nw.IP.To4() != nil
+
+		filter := &netlink.U32{
+			FilterAttrs: netlink.FilterAttrs{
+				LinkIndex: linkIndex,
+				Parent:    qdisc.Handle,
+				Priority:  1,
+				Protocol:  syscall.ETH_P_ALL,
+			},
+			ClassId:    netlink.MakeHandle(1, 1),
+			RedirIndex: ifbDevice.Attrs().Index,
+			Actions: []netlink.Action{
+				&netlink.MirredAction{
+					ActionAttrs:  netlink.ActionAttrs{},
+					MirredAction: netlink.TCA_EGRESS_REDIR,
+					Ifindex:      ifbDevice.Attrs().Index,
+				},
+			},
+		}
+		err = netlink.FilterAdd(filter)
+		if err != nil {
+			return fmt.Errorf("add filter: %s", err)
+		}
+	}
+
 	return nil
 }
 

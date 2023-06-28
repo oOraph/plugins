@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"net"
 
 	"github.com/vishvananda/netlink"
 
@@ -39,8 +40,9 @@ const (
 // BandwidthEntry corresponds to a single entry in the bandwidth argument,
 // see CONVENTIONS.md
 type BandwidthEntry struct {
-	IngressRate  uint64 `json:"ingressRate"`  // Bandwidth rate in bps for traffic through container. 0 for no limit. If ingressRate is set, ingressBurst must also be set
-	IngressBurst uint64 `json:"ingressBurst"` // Bandwidth burst in bits for traffic through container. 0 for no limit. If ingressBurst is set, ingressRate must also be set
+	NonShapedSubnet []string `json:"nonShapedSubnets"` // Subnets to be excluded from shaping, exclude is quite harder than include...
+	IngressRate     uint64   `json:"ingressRate"`      // Bandwidth rate in bps for traffic through container. 0 for no limit. If ingressRate is set, ingressBurst must also be set
+	IngressBurst    uint64   `json:"ingressBurst"`     // Bandwidth burst in bits for traffic through container. 0 for no limit. If ingressBurst is set, ingressRate must also be set
 
 	EgressRate  uint64 `json:"egressRate"`  // Bandwidth rate in bps for traffic through container. 0 for no limit. If egressRate is set, egressBurst must also be set
 	EgressBurst uint64 `json:"egressBurst"` // Bandwidth burst in bits for traffic through container. 0 for no limit. If egressBurst is set, egressRate must also be set
@@ -104,8 +106,9 @@ func getBandwidth(conf *PluginConf) *BandwidthEntry {
 
 func validateRateAndBurst(rate, burst uint64) error {
 	switch {
-	case burst == 0 && rate != 0:
-		return fmt.Errorf("if rate is set, burst must also be set")
+	// It is ok not to specify any burst
+	// case burst == 0 && rate != 0:
+	// 	return fmt.Errorf("if rate is set, burst must also be set")
 	case rate == 0 && burst != 0:
 		return fmt.Errorf("if burst is set, rate must also be set")
 	case burst/8 >= math.MaxUint32:
@@ -159,6 +162,16 @@ func getHostInterface(interfaces []*current.Interface, containerIfName string, n
 	return nil, fmt.Errorf("no veth peer of container interface found in host ns")
 }
 
+func validateSubnets(subnets []string) error {
+	for _, subnet := range subnets {
+		_, _, err := net.ParseCIDR(subnet)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func cmdAdd(args *skel.CmdArgs) error {
 	conf, err := parseConfig(args.StdinData)
 	if err != nil {
@@ -168,6 +181,13 @@ func cmdAdd(args *skel.CmdArgs) error {
 	bandwidth := getBandwidth(conf)
 	if bandwidth == nil || bandwidth.isZero() {
 		return types.PrintResult(conf.PrevResult, conf.CNIVersion)
+	}
+
+	if bandwidth.NonShapedSubnet != nil {
+		err := validateSubnets(bandwidth.NonShapedSubnet)
+		if err != nil {
+			return err
+		}
 	}
 
 	if conf.PrevResult == nil {
@@ -219,7 +239,8 @@ func cmdAdd(args *skel.CmdArgs) error {
 			Name: ifbDeviceName,
 			Mac:  ifbDevice.Attrs().HardwareAddr.String(),
 		})
-		err = CreateEgressQdisc(bandwidth.EgressRate, bandwidth.EgressBurst, hostInterface.Name, ifbDeviceName)
+		err = CreateEgressQdisc(bandwidth.EgressRate, bandwidth.EgressBurst,
+			bandwidth.NonShapedSubnet, hostInterface.Name, ifbDeviceName)
 		if err != nil {
 			return err
 		}
