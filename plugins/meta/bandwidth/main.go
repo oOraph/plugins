@@ -104,6 +104,10 @@ func getBandwidth(conf *PluginConf) *BandwidthEntry {
 	}
 
 	if bw.NonShapedSubnets == nil {
+		bw.NonShapedSubnets = conf.BandwidthEntry.NonShapedSubnets
+	}
+
+	if bw.NonShapedSubnets == nil {
 		bw.NonShapedSubnets = make([]string, 0, 1)
 		bw.NonShapedSubnets = append(bw.NonShapedSubnets, "10.0.0.0/8")
 	}
