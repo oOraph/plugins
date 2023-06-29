@@ -119,8 +119,7 @@ func createHTB(rateInBits, burstInBits uint64, interfaceName string, excludeSubn
 	// Netlink struct fields are not clear, let's use shell
 
 	// Step 1 qdisc
-	cmdStr := fmt.Sprintf("/usr/sbin/tc qdisc add dev %s root handle 1: htb default 30", interfaceName)
-	cmd := exec.Command(cmdStr)
+	cmd := exec.Command("/usr/sbin/tc", "qdisc", "add", "dev", interfaceName, "root", "handle", "1:", "htb", "default", "30")
 	_, err := cmd.Output()
 	if err != nil {
 		return fmt.Errorf("error while creating qdisc: %s", err)
@@ -129,18 +128,16 @@ func createHTB(rateInBits, burstInBits uint64, interfaceName string, excludeSubn
 	// Step 2 classes
 
 	// The capped one for all but excluded subnets
-	cmdStr = fmt.Sprintf("/usr/sbin/tc class add dev %s parent 1: classid 1:30 htb rate %d burst %d",
-		interfaceName, rateInBits, burstInBits)
-	cmd = exec.Command(cmdStr)
+	cmd = exec.Command("/usr/sbin/tc", "class", "add", "dev", interfaceName, "parent", "1:", "classid", "1:30", "htb", "rate",
+		fmt.Sprintf("%d", rateInBits), "burst", fmt.Sprintf("%d", burstInBits))
 	_, err = cmd.Output()
 	if err != nil {
 		return fmt.Errorf("error while creating tc qdisc: %s", err)
 	}
 
 	// The "uncapped" one (did not know how to uncap so I capped it to very high)
-	cmdStr = fmt.Sprintf("/usr/sbin/tc class add dev %s parent 1: classid 1:1 htb rate %d burst %d",
-		interfaceName, 100000000000, 4000000000)
-	cmd = exec.Command(cmdStr)
+	cmd = exec.Command("/usr/sbin/tc", "class", "add", "dev", interfaceName, "parent", "1:", "classid", "1:1", "htb",
+		"rate", "100000000000", "burst", "4000000000")
 	_, err = cmd.Output()
 	if err != nil {
 		return fmt.Errorf("error while creating tc class: %s", err)
@@ -159,9 +156,8 @@ func createHTB(rateInBits, burstInBits uint64, interfaceName string, excludeSubn
 		if isIpv4 {
 			protocol = "ip"
 		}
-		cmdStr = fmt.Sprintf("/usr/sbin/tc filter add dev %s parent 1: protocol %s prio 16 u32 match ip dst %s flowid 1:1",
-			interfaceName, protocol, subnet)
-		cmd = exec.Command(cmdStr)
+		cmd = exec.Command("/usr/sbin/tc", "filter", "add", "dev", interfaceName, "parent", "1:", "protocol", protocol,
+			"prio", "16", "u32", "match", "ip", "dst", subnet, "flowid", "1:1")
 		_, err = cmd.Output()
 		if err != nil {
 			return fmt.Errorf("error while creating tc filter: %s", err)
