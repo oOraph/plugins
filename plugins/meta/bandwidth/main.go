@@ -106,9 +106,8 @@ func getBandwidth(conf *PluginConf) *BandwidthEntry {
 
 func validateRateAndBurst(rate, burst uint64) error {
 	switch {
-	// It is ok not to specify any burst
-	// case burst == 0 && rate != 0:
-	// 	return fmt.Errorf("if rate is set, burst must also be set")
+	case burst == 0 && rate != 0:
+		return fmt.Errorf("if rate is set, burst must also be set")
 	case rate == 0 && burst != 0:
 		return fmt.Errorf("if burst is set, rate must also be set")
 	case burst/8 >= math.MaxUint32:
@@ -211,7 +210,8 @@ func cmdAdd(args *skel.CmdArgs) error {
 	}
 
 	if bandwidth.IngressRate > 0 && bandwidth.IngressBurst > 0 {
-		err = CreateIngressQdisc(bandwidth.IngressRate, bandwidth.IngressBurst, hostInterface.Name)
+		err = CreateIngressQdisc(bandwidth.IngressRate, bandwidth.IngressBurst,
+			bandwidth.NonShapedSubnet, hostInterface.Name)
 		if err != nil {
 			return err
 		}
