@@ -40,7 +40,7 @@ const (
 // BandwidthEntry corresponds to a single entry in the bandwidth argument,
 // see CONVENTIONS.md
 type BandwidthEntry struct {
-	NonShapedSubnet []string `json:"nonShapedSubnets"` // Subnets to be excluded from shaping, exclude is quite harder than include...
+	NonShapedSubnet []string `json:"nonShapedSubnets"` // Subnets to be excluded from shaping
 	IngressRate     uint64   `json:"ingressRate"`      // Bandwidth rate in bps for traffic through container. 0 for no limit. If ingressRate is set, ingressBurst must also be set
 	IngressBurst    uint64   `json:"ingressBurst"`     // Bandwidth burst in bits for traffic through container. 0 for no limit. If ingressBurst is set, ingressRate must also be set
 
