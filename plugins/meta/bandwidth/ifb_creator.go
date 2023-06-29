@@ -119,7 +119,7 @@ func createHTB(rateInBits, burstInBits uint64, interfaceName string, excludeSubn
 	// Netlink struct fields are not clear, let's use shell
 
 	// Step 1 qdisc
-	cmdStr := fmt.Sprintf("/usr/sbin/tc qdisc add dev %s root htb handle :1 default 30", interfaceName)
+	cmdStr := fmt.Sprintf("/usr/sbin/tc qdisc add dev %s root handle 1: htb default 30", interfaceName)
 	cmd := exec.Command(cmdStr)
 	_, err := cmd.Output()
 	if err != nil {
