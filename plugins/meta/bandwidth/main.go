@@ -40,9 +40,9 @@ const (
 // BandwidthEntry corresponds to a single entry in the bandwidth argument,
 // see CONVENTIONS.md
 type BandwidthEntry struct {
-	NonShapedSubnet []string `json:"nonShapedSubnets"` // Subnets to be excluded from shaping
-	IngressRate     uint64   `json:"ingressRate"`      // Bandwidth rate in bps for traffic through container. 0 for no limit. If ingressRate is set, ingressBurst must also be set
-	IngressBurst    uint64   `json:"ingressBurst"`     // Bandwidth burst in bits for traffic through container. 0 for no limit. If ingressBurst is set, ingressRate must also be set
+	NonShapedSubnets []string `json:"nonShapedSubnets"` // Subnets to be excluded from shaping
+	IngressRate      uint64   `json:"ingressRate"`      // Bandwidth rate in bps for traffic through container. 0 for no limit. If ingressRate is set, ingressBurst must also be set
+	IngressBurst     uint64   `json:"ingressBurst"`     // Bandwidth burst in bits for traffic through container. 0 for no limit. If ingressBurst is set, ingressRate must also be set
 
 	EgressRate  uint64 `json:"egressRate"`  // Bandwidth rate in bps for traffic through container. 0 for no limit. If egressRate is set, egressBurst must also be set
 	EgressBurst uint64 `json:"egressBurst"` // Bandwidth burst in bits for traffic through container. 0 for no limit. If egressBurst is set, egressRate must also be set
@@ -98,10 +98,17 @@ func parseConfig(stdin []byte) (*PluginConf, error) {
 }
 
 func getBandwidth(conf *PluginConf) *BandwidthEntry {
-	if conf.BandwidthEntry == nil && conf.RuntimeConfig.Bandwidth != nil {
-		return conf.RuntimeConfig.Bandwidth
+	bw := conf.BandwidthEntry
+	if bw == nil && conf.RuntimeConfig.Bandwidth != nil {
+		bw = conf.RuntimeConfig.Bandwidth
 	}
-	return conf.BandwidthEntry
+
+	if bw.NonShapedSubnets == nil {
+		bw.NonShapedSubnets = make([]string, 0, 1)
+		bw.NonShapedSubnets = append(bw.NonShapedSubnets, "10.0.0.0/8")
+	}
+
+	return bw
 }
 
 func validateRateAndBurst(rate, burst uint64) error {
@@ -162,10 +169,12 @@ func getHostInterface(interfaces []*current.Interface, containerIfName string, n
 }
 
 func validateSubnets(subnets []string) error {
-	for _, subnet := range subnets {
-		_, _, err := net.ParseCIDR(subnet)
-		if err != nil {
-			return err
+	if subnets != nil {
+		for _, subnet := range subnets {
+			_, _, err := net.ParseCIDR(subnet)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -182,11 +191,9 @@ func cmdAdd(args *skel.CmdArgs) error {
 		return types.PrintResult(conf.PrevResult, conf.CNIVersion)
 	}
 
-	if bandwidth.NonShapedSubnet != nil {
-		err := validateSubnets(bandwidth.NonShapedSubnet)
-		if err != nil {
-			return err
-		}
+	err = validateSubnets(bandwidth.NonShapedSubnets)
+	if err != nil {
+		return err
 	}
 
 	if conf.PrevResult == nil {
@@ -211,7 +218,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 
 	if bandwidth.IngressRate > 0 && bandwidth.IngressBurst > 0 {
 		err = CreateIngressQdisc(bandwidth.IngressRate, bandwidth.IngressBurst,
-			bandwidth.NonShapedSubnet, hostInterface.Name)
+			bandwidth.NonShapedSubnets, hostInterface.Name)
 		if err != nil {
 			return err
 		}
@@ -240,7 +247,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 			Mac:  ifbDevice.Attrs().HardwareAddr.String(),
 		})
 		err = CreateEgressQdisc(bandwidth.EgressRate, bandwidth.EgressBurst,
-			bandwidth.NonShapedSubnet, hostInterface.Name, ifbDeviceName)
+			bandwidth.NonShapedSubnets, hostInterface.Name, ifbDeviceName)
 		if err != nil {
 			return err
 		}
@@ -384,5 +391,6 @@ func cmdCheck(args *skel.CmdArgs) error {
 		}
 	}
 
-	return nil
+	err = validateSubnets(bandwidth.NonShapedSubnets)
+	return err
 }
