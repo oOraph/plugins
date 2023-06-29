@@ -119,7 +119,7 @@ func createHTB(rateInBits, burstInBits uint64, interfaceName string, excludeSubn
 	// Netlink struct fields are not clear, let's use shell
 
 	// Step 1 qdisc
-	cmdStr := fmt.Sprintf("tc qdisc add dev %s root htb handle :1 default 30", interfaceName)
+	cmdStr := fmt.Sprintf("/usr/sbin/tc qdisc add dev %s root htb handle :1 default 30", interfaceName)
 	cmd := exec.Command(cmdStr)
 	_, err := cmd.Output()
 	if err != nil {
@@ -129,7 +129,7 @@ func createHTB(rateInBits, burstInBits uint64, interfaceName string, excludeSubn
 	// Step 2 classes
 
 	// The capped one for all but excluded subnets
-	cmdStr = fmt.Sprintf("tc class add dev %s parent 1: classid 1:30 htb rate %d burst %d",
+	cmdStr = fmt.Sprintf("/usr/sbin/tc class add dev %s parent 1: classid 1:30 htb rate %d burst %d",
 		interfaceName, rateInBits, burstInBits)
 	cmd = exec.Command(cmdStr)
 	_, err = cmd.Output()
@@ -138,7 +138,7 @@ func createHTB(rateInBits, burstInBits uint64, interfaceName string, excludeSubn
 	}
 
 	// The "uncapped" one (did not know how to uncap so I capped it to very high)
-	cmdStr = fmt.Sprintf("tc class add dev %s parent 1: classid 1:1 htb rate %d burst %d",
+	cmdStr = fmt.Sprintf("/usr/sbin/tc class add dev %s parent 1: classid 1:1 htb rate %d burst %d",
 		interfaceName, 100000000000, 4000000000)
 	cmd = exec.Command(cmdStr)
 	_, err = cmd.Output()
@@ -159,7 +159,7 @@ func createHTB(rateInBits, burstInBits uint64, interfaceName string, excludeSubn
 		if isIpv4 {
 			protocol = "ip"
 		}
-		cmdStr = fmt.Sprintf("tc filter add dev %s parent 1: protocol %s prio 16 u32 match ip dst %s flowid 1:1",
+		cmdStr = fmt.Sprintf("/usr/sbin/tc filter add dev %s parent 1: protocol %s prio 16 u32 match ip dst %s flowid 1:1",
 			interfaceName, protocol, subnet)
 		cmd = exec.Command(cmdStr)
 		_, err = cmd.Output()
