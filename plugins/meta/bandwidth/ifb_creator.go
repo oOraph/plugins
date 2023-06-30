@@ -27,12 +27,13 @@ import (
 
 const latencyInMillis = 25
 
-func CreateIfb(ifbDeviceName string, mtu int) error {
+func CreateIfb(ifbDeviceName string, mtu int, qlen int) error {
 	err := netlink.LinkAdd(&netlink.Ifb{
 		LinkAttrs: netlink.LinkAttrs{
-			Name:  ifbDeviceName,
-			Flags: net.FlagUp,
-			MTU:   mtu,
+			Name:   ifbDeviceName,
+			Flags:  net.FlagUp,
+			MTU:    mtu,
+			TxQLen: qlen,
 		},
 	})
 	if err != nil {

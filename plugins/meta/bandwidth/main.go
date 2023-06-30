@@ -132,13 +132,13 @@ func getIfbDeviceName(networkName string, containerID string) string {
 	return utils.MustFormatHashWithPrefix(maxIfbDeviceLength, ifbDevicePrefix, networkName+containerID)
 }
 
-func getMTU(deviceName string) (int, error) {
+func getMTUAndQLen(deviceName string) (int, int, error) {
 	link, err := netlink.LinkByName(deviceName)
 	if err != nil {
-		return -1, err
+		return -1, -1, err
 	}
 
-	return link.Attrs().MTU, nil
+	return link.Attrs().MTU, link.Attrs().TxQLen, nil
 }
 
 // get the veth peer of container interface in host namespace
@@ -229,14 +229,14 @@ func cmdAdd(args *skel.CmdArgs) error {
 	}
 
 	if bandwidth.EgressRate > 0 && bandwidth.EgressBurst > 0 {
-		mtu, err := getMTU(hostInterface.Name)
+		mtu, qlen, err := getMTUAndQLen(hostInterface.Name)
 		if err != nil {
 			return err
 		}
 
 		ifbDeviceName := getIfbDeviceName(conf.Name, args.ContainerID)
 
-		err = CreateIfb(ifbDeviceName, mtu)
+		err = CreateIfb(ifbDeviceName, mtu, qlen)
 		if err != nil {
 			return err
 		}
