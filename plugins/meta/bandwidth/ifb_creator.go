@@ -28,6 +28,11 @@ import (
 const latencyInMillis = 25
 
 func CreateIfb(ifbDeviceName string, mtu int, qlen int) error {
+
+	if qlen < 1000 {
+		qlen = 1000
+	}
+
 	err := netlink.LinkAdd(&netlink.Ifb{
 		LinkAttrs: netlink.LinkAttrs{
 			Name:   ifbDeviceName,
