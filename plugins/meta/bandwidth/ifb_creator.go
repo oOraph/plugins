@@ -120,36 +120,68 @@ func CreateEgressQdisc(rateInBits, burstInBits uint64, excludeSubnets []string, 
 	return nil
 }
 
-func createHTB(rateInBits, burstInBits uint64, interfaceName string, excludeSubnets []string) error {
+func createHTB(rateInBits, burstInBits uint64, linkIndex int, excludeSubnets []string) error {
 
 	// Netlink struct fields are not clear, let's use shell
 
 	// Step 1 qdisc
-	cmd := exec.Command("/usr/sbin/tc", "qdisc", "add", "dev", interfaceName, "root", "handle", "1:", "htb", "default", "30")
-	_, err := cmd.Output()
+	// cmd := exec.Command("/usr/sbin/tc", "qdisc", "add", "dev", interfaceName, "root", "handle", "1:", "htb", "default", "30")
+	qdisc := &netlink.Htb{
+		QdiscAttrs: netlink.QdiscAttrs{
+			LinkIndex: linkIndex,
+			Handle:    netlink.MakeHandle(1, 0),
+			Parent:    netlink.HANDLE_ROOT,
+		},
+		Defcls: netlink.MakeHandle(1, 30),
+	}
+	err := netlink.QdiscAdd(qdisc)
 	if err != nil {
 		return fmt.Errorf("error while creating qdisc: %s", err)
 	}
 
 	// Step 2 classes
 
-	// The capped one for all but excluded subnets
-	cmd = exec.Command("/usr/sbin/tc", "class", "add", "dev", interfaceName, "parent", "1:", "classid", "1:30", "htb", "rate",
-		fmt.Sprintf("%d", rateInBits), "burst", fmt.Sprintf("%d", burstInBits))
-	_, err = cmd.Output()
-	if err != nil {
-		return fmt.Errorf("error while creating tc qdisc: %s", err)
+	rateInBytes := rateInBits / 8
+	burstInBytes := burstInBits / 8
+	bufferInBytes := buffer(rateInBytes, uint32(burstInBytes))
+
+	// The capped class for all but excluded subnets
+	// cmd = exec.Command("/usr/sbin/tc", "class", "add", "dev", interfaceName, "parent", "1:", "classid", "1:30", "htb", "rate",
+	//       fmt.Sprintf("%d", rateInBits), "burst", fmt.Sprintf("%d", burstInBits))
+	defClass := &netlink.HtbClass{
+		ClassAttrs: netlink.ClassAttrs{
+			LinkIndex: linkIndex,
+			Handle:    netlink.MakeHandle(1, 30),
+			Parent:    netlink.MakeHandle(1, 0),
+		},
+		Rate:   rateInBytes,
+		Buffer: bufferInBytes,
 	}
 
-	// The "uncapped" one (did not know how to uncap so I capped it to very high)
-	cmd = exec.Command("/usr/sbin/tc", "class", "add", "dev", interfaceName, "parent", "1:", "classid", "1:1", "htb",
-		"rate", "100000000000", "burst", "4000000000")
-	_, err = cmd.Output()
+	err = netlink.ClassAdd(defClass)
 	if err != nil {
-		return fmt.Errorf("error while creating tc class: %s", err)
+		return fmt.Errorf("error while creating htb default class: %s", err)
 	}
 
-	// Now add filter to redirect excluded subnets to the class 1 instead of the default one (30)
+	// The uncapped class for the excluded subnets (I did not know how to uncap so I capped it to very high)
+	// cmd = exec.Command("/usr/sbin/tc", "class", "add", "dev", interfaceName, "parent", "1:", "classid", "1:1", "htb",
+	// 	"rate", "100000000000", "burst", "4000000000")
+	bigRate := uint64(100_000_000_000)
+	uncappedClass := &netlink.HtbClass{
+		ClassAttrs: netlink.ClassAttrs{
+			LinkIndex: linkIndex,
+			Handle:    netlink.MakeHandle(1, 1),
+			Parent:    qdisc.Handle,
+		},
+		Rate:   bigRate,
+		Buffer: buffer(bigRate, 4_000_000_000),
+	}
+	err = netlink.ClassAdd(uncappedClass)
+	if err != nil {
+		return fmt.Errorf("error while creating htb uncapped class: %s", err)
+	}
+
+	// Now add filters to redirect excluded subnets to the class 1 instead of the default one (30)
 
 	for _, subnet := range excludeSubnets {
 		_, nw, err := net.ParseCIDR(subnet)
@@ -158,10 +190,43 @@ func createHTB(rateInBits, burstInBits uint64, interfaceName string, excludeSubn
 		}
 
 		isIpv4 := nw.IP.To4() != nil
-		protocol := "ip6"
+		protocol := syscall.IPPROTO_IPV6
 		if isIpv4 {
-			protocol = "ip"
+			protocol = syscall.IPPROTO_IPIP
 		}
+
+		var mask uint32
+		buf := bytes.NewReader(nw.Mask)
+    	err := binary.Read(buf, binary.BigEndian, &mask)
+
+		if err != nil {
+			return fmt.Errorf("bad mask: %s", err)
+		}
+
+		println(fmt.Sprintf("Mask %d", mask))
+
+		selector := netlink.TcU32Sel{
+			Keys: []netlink.TcU32Key{
+				netlink.TcU32Key{
+					Mask:,
+					Val:,
+					Off: 16,
+					OffMask: 0
+				},
+			},
+		}
+
+		tcFilter := netlink.U32{
+			FilterAttrs: netlink.FilterAttrs{
+				LinkIndex: linkIndex,
+				Parent:    qdisc.Handle,
+				Priority:  16,
+				Protocol:  uint16(protocol),
+			},
+			ClassId: uncappedClass.Handle,
+			Sel:     selector,
+		}
+
 		cmd = exec.Command("/usr/sbin/tc", "filter", "add", "dev", interfaceName, "parent", "1:", "protocol", protocol,
 			"prio", "16", "u32", "match", "ip", "dst", subnet, "flowid", "1:1")
 		_, err = cmd.Output()
