@@ -302,98 +302,100 @@ func cmdCheck(args *skel.CmdArgs) error {
 		return fmt.Errorf("must be called as a chained plugin")
 	}
 
-	result, err := current.NewResultFromResult(bwConf.PrevResult)
-	if err != nil {
-		return fmt.Errorf("could not convert result to current version: %v", err)
-	}
+	// result, err := current.NewResultFromResult(bwConf.PrevResult)
+	// if err != nil {
+	// 	return fmt.Errorf("could not convert result to current version: %v", err)
+	// }
 
-	netns, err := ns.GetNS(args.Netns)
-	if err != nil {
-		return fmt.Errorf("failed to open netns %q: %v", netns, err)
-	}
-	defer netns.Close()
+	// netns, err := ns.GetNS(args.Netns)
+	// if err != nil {
+	// 	return fmt.Errorf("failed to open netns %q: %v", netns, err)
+	// }
+	// defer netns.Close()
 
-	hostInterface, err := getHostInterface(result.Interfaces, args.IfName, netns)
-	if err != nil {
-		return err
-	}
-	link, err := netlink.LinkByName(hostInterface.Name)
-	if err != nil {
-		return err
-	}
+	// hostInterface, err := getHostInterface(result.Interfaces, args.IfName, netns)
+	// if err != nil {
+	// 	return err
+	// }
+	// link, err := netlink.LinkByName(hostInterface.Name)
+	// if err != nil {
+	// 	return err
+	// }
 
 	bandwidth := getBandwidth(bwConf)
 
-	if bandwidth.IngressRate > 0 && bandwidth.IngressBurst > 0 {
-		rateInBytes := bandwidth.IngressRate / 8
-		burstInBytes := bandwidth.IngressBurst / 8
-		bufferInBytes := buffer(rateInBytes, uint32(burstInBytes))
-		latency := latencyInUsec(latencyInMillis)
-		limitInBytes := limit(rateInBytes, latency, uint32(burstInBytes))
+	// if bandwidth.IngressRate > 0 && bandwidth.IngressBurst > 0 {
+	// 	rateInBytes := bandwidth.IngressRate / 8
+	// 	burstInBytes := bandwidth.IngressBurst / 8
+	// 	bufferInBytes := buffer(rateInBytes, uint32(burstInBytes))
+	// 	latency := latencyInUsec(latencyInMillis)
+	// 	limitInBytes := limit(rateInBytes, latency, uint32(burstInBytes))
 
-		qdiscs, err := SafeQdiscList(link)
-		if err != nil {
-			return err
-		}
-		if len(qdiscs) == 0 {
-			return fmt.Errorf("Failed to find qdisc")
-		}
+	// 	qdiscs, err := SafeQdiscList(link)
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// 	if len(qdiscs) == 0 {
+	// 		return fmt.Errorf("Failed to find qdisc")
+	// 	}
 
-		for _, qdisc := range qdiscs {
-			tbf, isTbf := qdisc.(*netlink.Tbf)
-			if !isTbf {
-				break
-			}
-			if tbf.Rate != rateInBytes {
-				return fmt.Errorf("Rate doesn't match")
-			}
-			if tbf.Limit != limitInBytes {
-				return fmt.Errorf("Limit doesn't match")
-			}
-			if tbf.Buffer != bufferInBytes {
-				return fmt.Errorf("Buffer doesn't match")
-			}
-		}
-	}
+	// 	for _, qdisc := range qdiscs {
+	// 		htb, isHtb := qdisc.(*netlink.Htb)
+	// 		if !isHtb {
+	// 			break
+	// 		}
+	// 		if htb.Defcls != 30 {
+	// 			return fmt.Errorf("Default class does not match")
+	// 		}
 
-	if bandwidth.EgressRate > 0 && bandwidth.EgressBurst > 0 {
-		rateInBytes := bandwidth.EgressRate / 8
-		burstInBytes := bandwidth.EgressBurst / 8
-		bufferInBytes := buffer(rateInBytes, uint32(burstInBytes))
-		latency := latencyInUsec(latencyInMillis)
-		limitInBytes := limit(rateInBytes, latency, uint32(burstInBytes))
+	// 		htb.
+	// 		if tbf.Limit != limitInBytes {
+	// 			return fmt.Errorf("Limit doesn't match")
+	// 		}
+	// 		if tbf.Buffer != bufferInBytes {
+	// 			return fmt.Errorf("Buffer doesn't match")
+	// 		}
+	// 	}
+	// }
 
-		ifbDeviceName := getIfbDeviceName(bwConf.Name, args.ContainerID)
+	// if bandwidth.EgressRate > 0 && bandwidth.EgressBurst > 0 {
+	// 	rateInBytes := bandwidth.EgressRate / 8
+	// 	burstInBytes := bandwidth.EgressBurst / 8
+	// 	bufferInBytes := buffer(rateInBytes, uint32(burstInBytes))
+	// 	latency := latencyInUsec(latencyInMillis)
+	// 	limitInBytes := limit(rateInBytes, latency, uint32(burstInBytes))
 
-		ifbDevice, err := netlink.LinkByName(ifbDeviceName)
-		if err != nil {
-			return fmt.Errorf("get ifb device: %s", err)
-		}
+	// 	ifbDeviceName := getIfbDeviceName(bwConf.Name, args.ContainerID)
 
-		qdiscs, err := SafeQdiscList(ifbDevice)
-		if err != nil {
-			return err
-		}
-		if len(qdiscs) == 0 {
-			return fmt.Errorf("Failed to find qdisc")
-		}
+	// 	ifbDevice, err := netlink.LinkByName(ifbDeviceName)
+	// 	if err != nil {
+	// 		return fmt.Errorf("get ifb device: %s", err)
+	// 	}
 
-		for _, qdisc := range qdiscs {
-			tbf, isTbf := qdisc.(*netlink.Tbf)
-			if !isTbf {
-				break
-			}
-			if tbf.Rate != rateInBytes {
-				return fmt.Errorf("Rate doesn't match")
-			}
-			if tbf.Limit != limitInBytes {
-				return fmt.Errorf("Limit doesn't match")
-			}
-			if tbf.Buffer != bufferInBytes {
-				return fmt.Errorf("Buffer doesn't match")
-			}
-		}
-	}
+	// 	qdiscs, err := SafeQdiscList(ifbDevice)
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// 	if len(qdiscs) == 0 {
+	// 		return fmt.Errorf("Failed to find qdisc")
+	// 	}
+
+	// 	for _, qdisc := range qdiscs {
+	// 		tbf, isTbf := qdisc.(*netlink.Tbf)
+	// 		if !isTbf {
+	// 			break
+	// 		}
+	// 		if tbf.Rate != rateInBytes {
+	// 			return fmt.Errorf("Rate doesn't match")
+	// 		}
+	// 		if tbf.Limit != limitInBytes {
+	// 			return fmt.Errorf("Limit doesn't match")
+	// 		}
+	// 		if tbf.Buffer != bufferInBytes {
+	// 			return fmt.Errorf("Buffer doesn't match")
+	// 		}
+	// 	}
+	// }
 
 	err = validateSubnets(bandwidth.NonShapedSubnets)
 	return err
