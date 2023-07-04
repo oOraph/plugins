@@ -28,7 +28,7 @@ import (
 
 const latencyInMillis = 25
 const UncappedRate = 100_000_000_000
-const DefaultClassMinorID = 30
+const DefaultClassMinorID = 48
 
 func CreateIfb(ifbDeviceName string, mtu int, qlen int) error {
 
@@ -163,6 +163,9 @@ func createHTB(rateInBits, burstInBits uint64, linkIndex int, excludeSubnets []s
 		},
 		Rate:   rateInBytes,
 		Buffer: bufferInBytes,
+		// Let's set up the "burst" rate to twice the specified rate
+		Ceil:    2 * rateInBytes,
+		Cbuffer: 0,
 	}
 
 	err = netlink.ClassAdd(defClass)
@@ -181,6 +184,7 @@ func createHTB(rateInBits, burstInBits uint64, linkIndex int, excludeSubnets []s
 			Parent:    qdisc.Handle,
 		},
 		Rate: bigRate,
+		Ceil: bigRate,
 		// No need for any burst, the minimum buffer size in q_htb.c should be enough to handle the rate which
 		// is already more than enough
 	}
