@@ -15,19 +15,14 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net"
-	"os"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/onsi/gomega/gexec"
 	"github.com/vishvananda/netlink"
 
-	"github.com/containernetworking/cni/pkg/invoke"
 	"github.com/containernetworking/cni/pkg/skel"
 	"github.com/containernetworking/cni/pkg/types"
 	types100 "github.com/containernetworking/cni/pkg/types/100"
@@ -126,7 +121,7 @@ var _ = Describe("bandwidth test", func() {
 		ver := ver
 
 		Describe("cmdADD", func() {
-			It(fmt.Sprintf("[%s] works with a Veth pair", ver), func() {
+			It(fmt.Sprintf("[%s] works with a Veth pair wihtout any uncontrolled subnets", ver), func() {
 				conf := fmt.Sprintf(`{
 					"cniVersion": "%s",
 					"name": "cni-plugin-bandwidth-test",
@@ -134,7 +129,7 @@ var _ = Describe("bandwidth test", func() {
 					"ingressRate": 8,
 					"ingressBurst": 8,
 					"egressRate": 16,
-					"egressBurst": 8,
+					"egressBurst": 12,
 					"prevResult": {
 						"interfaces": [
 							{
@@ -165,6 +160,7 @@ var _ = Describe("bandwidth test", func() {
 					StdinData:   []byte(conf),
 				}
 
+				// Container egress (host ingress)
 				Expect(hostNs.Do(func(netNS ns.NetNS) error {
 					defer GinkgoRecover()
 					r, out, err := testutils.CmdAdd(containerNs.Path(), args.ContainerID, "", []byte(conf), func() error { return cmdAdd(args) })
@@ -186,9 +182,30 @@ var _ = Describe("bandwidth test", func() {
 					Expect(qdiscs).To(HaveLen(1))
 					Expect(qdiscs[0].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
 
-					Expect(qdiscs[0]).To(BeAssignableToTypeOf(&netlink.Tbf{}))
-					Expect(qdiscs[0].(*netlink.Tbf).Rate).To(Equal(uint64(2)))
-					Expect(qdiscs[0].(*netlink.Tbf).Limit).To(Equal(uint32(1)))
+					Expect(qdiscs[0]).To(BeAssignableToTypeOf(&netlink.Htb{}))
+
+					classes, err := netlink.ClassList(ifbLink, qdiscs[0].Attrs().Handle)
+
+					Expect(err).NotTo(HaveOccurred())
+					Expect(classes).To(HaveLen(2))
+
+					// Uncapped class
+					Expect(classes[0]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
+					Expect(classes[0].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, 1)))
+					Expect(classes[0].(*netlink.HtbClass).Rate).To(Equal(uint64(UncappedRate)))
+					Expect(classes[0].(*netlink.HtbClass).Buffer).To(Equal(uint32(0)))
+					Expect(classes[0].(*netlink.HtbClass).Ceil).To(Equal(uint64(UncappedRate)))
+					Expect(classes[0].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
+
+					// Class with traffic shapping settings
+					Expect(classes[1]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
+					Expect(classes[1].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, uint16(qdiscs[0].(*netlink.Htb).Defcls))))
+					Expect(classes[1].(*netlink.HtbClass).Rate).To(Equal(uint64(2)))
+					// Expect(classes[1].(*netlink.HtbClass).Buffer).To(Equal(uint32(7812500)))
+					Expect(classes[1].(*netlink.HtbClass).Ceil).To(Equal(uint64(4)))
+					Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
+
+					// filters :=
 
 					hostVethLink, err := netlink.LinkByName(hostIfname)
 					Expect(err).NotTo(HaveOccurred())
@@ -202,6 +219,7 @@ var _ = Describe("bandwidth test", func() {
 					return nil
 				})).To(Succeed())
 
+				// Container ingress (host egress)
 				Expect(hostNs.Do(func(n ns.NetNS) error {
 					defer GinkgoRecover()
 
@@ -214,847 +232,879 @@ var _ = Describe("bandwidth test", func() {
 					Expect(qdiscs).To(HaveLen(2))
 					Expect(qdiscs[0].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
 
-					Expect(qdiscs[0]).To(BeAssignableToTypeOf(&netlink.Tbf{}))
-					Expect(qdiscs[0].(*netlink.Tbf).Rate).To(Equal(uint64(1)))
-					Expect(qdiscs[0].(*netlink.Tbf).Limit).To(Equal(uint32(1)))
-					return nil
-				})).To(Succeed())
-			})
+					Expect(qdiscs[0]).To(BeAssignableToTypeOf(&netlink.Htb{}))
+					Expect(qdiscs[0].(*netlink.Htb).Defcls).To(Equal(uint32(48)))
 
-			It(fmt.Sprintf("[%s] does not apply ingress when disabled", ver), func() {
-				conf := fmt.Sprintf(`{
-					"cniVersion": "%s",
-					"name": "cni-plugin-bandwidth-test",
-					"type": "bandwidth",
-					"ingressRate": 0,
-					"ingressBurst": 0,
-					"egressRate": 8000,
-					"egressBurst": 80,
-					"prevResult": {
-						"interfaces": [
-							{
-								"name": "%s",
-								"sandbox": ""
-							},
-							{
-								"name": "%s",
-								"sandbox": "%s"
-							}
-						],
-						"ips": [
-							{
-								"version": "4",
-								"address": "%s/24",
-								"gateway": "10.0.0.1",
-								"interface": 1
-							}
-						],
-						"routes": []
-					}
-				}`, ver, hostIfname, containerIfname, containerNs.Path(), containerIP.String())
+					classes, err := netlink.ClassList(ifbLink, qdiscs[0].Attrs().Handle)
 
-				args := &skel.CmdArgs{
-					ContainerID: "dummy",
-					Netns:       containerNs.Path(),
-					IfName:      containerIfname,
-					StdinData:   []byte(conf),
-				}
-
-				Expect(hostNs.Do(func(netNS ns.NetNS) error {
-					defer GinkgoRecover()
-
-					_, out, err := testutils.CmdAdd(containerNs.Path(), args.ContainerID, ifbDeviceName, []byte(conf), func() error { return cmdAdd(args) })
-					Expect(err).NotTo(HaveOccurred(), string(out))
-
-					_, err = netlink.LinkByName(ifbDeviceName)
 					Expect(err).NotTo(HaveOccurred())
-					return nil
-				})).To(Succeed())
+					Expect(classes).To(HaveLen(2))
 
-				Expect(hostNs.Do(func(n ns.NetNS) error {
-					defer GinkgoRecover()
+					// Uncapped class
+					Expect(classes[0]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
+					Expect(classes[0].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, 1)))
+					Expect(classes[0].(*netlink.HtbClass).Rate).To(Equal(uint64(UncappedRate)))
+					Expect(classes[0].(*netlink.HtbClass).Buffer).To(Equal(uint32(0)))
+					Expect(classes[0].(*netlink.HtbClass).Ceil).To(Equal(uint64(UncappedRate)))
+					Expect(classes[0].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
 
-					containerIfLink, err := netlink.LinkByName(hostIfname)
-					Expect(err).NotTo(HaveOccurred())
+					// Class with traffic shapping settings
+					Expect(classes[1]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
+					Expect(classes[1].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, uint16(qdiscs[0].(*netlink.Htb).Defcls))))
+					Expect(classes[1].(*netlink.HtbClass).Rate).To(Equal(uint64(1)))
+					// Expect(classes[1].(*netlink.HtbClass).Buffer).To(Equal(uint32(15625000)))
+					Expect(classes[1].(*netlink.HtbClass).Ceil).To(Equal(uint64(2)))
+					Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
 
-					qdiscs, err := netlink.QdiscList(containerIfLink)
-					Expect(err).NotTo(HaveOccurred())
-
-					Expect(qdiscs).To(HaveLen(2))
-					Expect(qdiscs[0]).NotTo(BeAssignableToTypeOf(&netlink.Tbf{}))
-					Expect(qdiscs[1]).NotTo(BeAssignableToTypeOf(&netlink.Tbf{}))
-
-					return nil
-				})).To(Succeed())
-			})
-
-			It(fmt.Sprintf("[%s] does not apply egress when disabled", ver), func() {
-				conf := fmt.Sprintf(`{
-					"cniVersion": "%s",
-					"name": "cni-plugin-bandwidth-test",
-					"type": "bandwidth",
-					"egressRate": 0,
-					"egressBurst": 0,
-					"ingressRate": 8000,
-					"ingressBurst": 80,
-					"prevResult": {
-						"interfaces": [
-							{
-								"name": "%s",
-								"sandbox": ""
-							},
-							{
-								"name": "%s",
-								"sandbox": "%s"
-							}
-						],
-						"ips": [
-							{
-								"version": "4",
-								"address": "%s/24",
-								"gateway": "10.0.0.1",
-								"interface": 1
-							}
-						],
-						"routes": []
-					}
-				}`, ver, hostIfname, containerIfname, containerNs.Path(), containerIP.String())
-
-				args := &skel.CmdArgs{
-					ContainerID: "dummy",
-					Netns:       containerNs.Path(),
-					IfName:      containerIfname,
-					StdinData:   []byte(conf),
-				}
-
-				Expect(hostNs.Do(func(netNS ns.NetNS) error {
-					defer GinkgoRecover()
-
-					_, out, err := testutils.CmdAdd(containerNs.Path(), args.ContainerID, ifbDeviceName, []byte(conf), func() error { return cmdAdd(args) })
-					Expect(err).NotTo(HaveOccurred(), string(out))
-
-					_, err = netlink.LinkByName(ifbDeviceName)
-					Expect(err).To(HaveOccurred())
-					return nil
-				})).To(Succeed())
-
-				Expect(hostNs.Do(func(n ns.NetNS) error {
-					defer GinkgoRecover()
-
-					containerIfLink, err := netlink.LinkByName(hostIfname)
-					Expect(err).NotTo(HaveOccurred())
-
-					qdiscs, err := netlink.QdiscList(containerIfLink)
-					Expect(err).NotTo(HaveOccurred())
-
-					Expect(qdiscs).To(HaveLen(1))
-					Expect(qdiscs[0].Attrs().LinkIndex).To(Equal(containerIfLink.Attrs().Index))
-
-					Expect(qdiscs[0]).To(BeAssignableToTypeOf(&netlink.Tbf{}))
-					Expect(qdiscs[0].(*netlink.Tbf).Rate).To(Equal(uint64(1000)))
-					Expect(qdiscs[0].(*netlink.Tbf).Limit).To(Equal(uint32(35)))
-					return nil
-				})).To(Succeed())
-			})
-
-			It(fmt.Sprintf("[%s] fails an invalid ingress config", ver), func() {
-				conf := fmt.Sprintf(`{
-					"cniVersion": "%s",
-					"name": "cni-plugin-bandwidth-test",
-					"type": "bandwidth",
-					"ingressRate": 0,
-					"ingressBurst": 123,
-					"egressRate": 123,
-					"egressBurst": 123,
-					"prevResult": {
-						"interfaces": [
-							{
-								"name": "%s",
-								"sandbox": ""
-							},
-							{
-								"name": "%s",
-								"sandbox": "%s"
-							}
-						],
-						"ips": [
-							{
-								"version": "4",
-								"address": "%s/24",
-								"gateway": "10.0.0.1",
-								"interface": 1
-							}
-						],
-						"routes": []
-					}
-				}`, ver, hostIfname, containerIfname, containerNs.Path(), containerIP.String())
-
-				args := &skel.CmdArgs{
-					ContainerID: "dummy",
-					Netns:       containerNs.Path(),
-					IfName:      "eth0",
-					StdinData:   []byte(conf),
-				}
-
-				Expect(hostNs.Do(func(netNS ns.NetNS) error {
-					defer GinkgoRecover()
-
-					_, _, err := testutils.CmdAdd(containerNs.Path(), args.ContainerID, "", []byte(conf), func() error { return cmdAdd(args) })
-					Expect(err).To(MatchError("if burst is set, rate must also be set"))
-					return nil
-				})).To(Succeed())
-			})
-
-			It(fmt.Sprintf("[%s] works with a Veth pair using runtime config", ver), func() {
-				conf := fmt.Sprintf(`{
-					"cniVersion": "%s",
-					"name": "cni-plugin-bandwidth-test",
-					"type": "bandwidth",
-					"runtimeConfig": {
-						"bandWidth": {
-							"ingressRate": 8,
-							"ingressBurst": 8,
-							"egressRate": 16,
-							"egressBurst": 9
-						}
-					},
-					"prevResult": {
-						"interfaces": [
-							{
-								"name": "%s",
-								"sandbox": ""
-							},
-							{
-								"name": "%s",
-								"sandbox": "%s"
-							}
-						],
-						"ips": [
-							{
-								"version": "4",
-								"address": "%s/24",
-								"gateway": "10.0.0.1",
-								"interface": 1
-							}
-						],
-						"routes": []
-					}
-				}`, ver, hostIfname, containerIfname, containerNs.Path(), containerIP.String())
-
-				args := &skel.CmdArgs{
-					ContainerID: "dummy",
-					Netns:       containerNs.Path(),
-					IfName:      containerIfname,
-					StdinData:   []byte(conf),
-				}
-
-				Expect(hostNs.Do(func(netNS ns.NetNS) error {
-					defer GinkgoRecover()
-					r, out, err := testutils.CmdAdd(containerNs.Path(), args.ContainerID, "", []byte(conf), func() error { return cmdAdd(args) })
-					Expect(err).NotTo(HaveOccurred(), string(out))
-					result, err := types100.GetResult(r)
-					Expect(err).NotTo(HaveOccurred())
-
-					Expect(result.Interfaces).To(HaveLen(3))
-					Expect(result.Interfaces[2].Name).To(Equal(ifbDeviceName))
-					Expect(result.Interfaces[2].Sandbox).To(Equal(""))
-
-					ifbLink, err := netlink.LinkByName(ifbDeviceName)
-					Expect(err).NotTo(HaveOccurred())
-					Expect(ifbLink.Attrs().MTU).To(Equal(hostIfaceMTU))
-
-					qdiscs, err := netlink.QdiscList(ifbLink)
-					Expect(err).NotTo(HaveOccurred())
-
-					Expect(qdiscs).To(HaveLen(1))
-					Expect(qdiscs[0].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
-
-					Expect(qdiscs[0]).To(BeAssignableToTypeOf(&netlink.Tbf{}))
-					Expect(qdiscs[0].(*netlink.Tbf).Rate).To(Equal(uint64(2)))
-					Expect(qdiscs[0].(*netlink.Tbf).Limit).To(Equal(uint32(1)))
-
-					hostVethLink, err := netlink.LinkByName(hostIfname)
-					Expect(err).NotTo(HaveOccurred())
-
-					qdiscFilters, err := netlink.FilterList(hostVethLink, netlink.MakeHandle(0xffff, 0))
-					Expect(err).NotTo(HaveOccurred())
-
-					Expect(qdiscFilters).To(HaveLen(1))
-					Expect(qdiscFilters[0].(*netlink.U32).Actions[0].(*netlink.MirredAction).Ifindex).To(Equal(ifbLink.Attrs().Index))
-
-					return nil
-				})).To(Succeed())
-
-				Expect(hostNs.Do(func(n ns.NetNS) error {
-					defer GinkgoRecover()
-
-					ifbLink, err := netlink.LinkByName(hostIfname)
-					Expect(err).NotTo(HaveOccurred())
-
-					qdiscs, err := netlink.QdiscList(ifbLink)
-					Expect(err).NotTo(HaveOccurred())
-
-					Expect(qdiscs).To(HaveLen(2))
-					Expect(qdiscs[0].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
-
-					Expect(qdiscs[0]).To(BeAssignableToTypeOf(&netlink.Tbf{}))
-					Expect(qdiscs[0].(*netlink.Tbf).Rate).To(Equal(uint64(1)))
-					Expect(qdiscs[0].(*netlink.Tbf).Limit).To(Equal(uint32(1)))
-					return nil
-				})).To(Succeed())
-			})
-
-			It(fmt.Sprintf("[%s] should apply static config when both static config and runtime config exist", ver), func() {
-				conf := fmt.Sprintf(`{
-					"cniVersion": "%s",
-					"name": "cni-plugin-bandwidth-test",
-					"type": "bandwidth",
-					"ingressRate": 0,
-					"ingressBurst": 123,
-					"egressRate": 123,
-					"egressBurst": 123,
-					"runtimeConfig": {
-						"bandWidth": {
-							"ingressRate": 8,
-							"ingressBurst": 8,
-							"egressRate": 16,
-							"egressBurst": 9
-						}
-					},
-					"prevResult": {
-						"interfaces": [
-							{
-								"name": "%s",
-								"sandbox": ""
-							},
-							{
-								"name": "%s",
-								"sandbox": "%s"
-							}
-						],
-						"ips": [
-							{
-								"version": "4",
-								"address": "%s/24",
-								"gateway": "10.0.0.1",
-								"interface": 1
-							}
-						],
-						"routes": []
-					}
-				}`, ver, hostIfname, containerIfname, containerNs.Path(), containerIP.String())
-
-				args := &skel.CmdArgs{
-					ContainerID: "dummy",
-					Netns:       containerNs.Path(),
-					IfName:      "eth0",
-					StdinData:   []byte(conf),
-				}
-
-				Expect(hostNs.Do(func(netNS ns.NetNS) error {
-					defer GinkgoRecover()
-
-					_, _, err := testutils.CmdAdd(containerNs.Path(), args.ContainerID, "", []byte(conf), func() error { return cmdAdd(args) })
-					Expect(err).To(MatchError("if burst is set, rate must also be set"))
+					// Expect(qdiscs[0].(*netlink.Tbf).Rate).To(Equal(uint64(1)))
+					// Expect(qdiscs[0].(*netlink.Tbf).Limit).To(Equal(uint32(1)))
 					return nil
 				})).To(Succeed())
 			})
 		})
 
-		Describe("cmdDEL", func() {
-			It(fmt.Sprintf("[%s] works with a Veth pair using 0.3.0 config", ver), func() {
-				conf := fmt.Sprintf(`{
-					"cniVersion": "%s",
-					"name": "cni-plugin-bandwidth-test",
-					"type": "bandwidth",
-					"ingressRate": 8,
-					"ingressBurst": 8,
-					"egressRate": 9,
-					"egressBurst": 9,
-					"prevResult": {
-						"interfaces": [
-							{
-								"name": "%s",
-								"sandbox": ""
-							},
-							{
-								"name": "%s",
-								"sandbox": "%s"
-							}
-						],
-						"ips": [
-							{
-								"version": "4",
-								"address": "%s/24",
-								"gateway": "10.0.0.1",
-								"interface": 1
-							}
-						],
-						"routes": []
-					}
-				}`, ver, hostIfname, containerIfname, containerNs.Path(), containerIP.String())
-
-				args := &skel.CmdArgs{
-					ContainerID: "dummy",
-					Netns:       containerNs.Path(),
-					IfName:      containerIfname,
-					StdinData:   []byte(conf),
-				}
-
-				Expect(hostNs.Do(func(netNS ns.NetNS) error {
-					defer GinkgoRecover()
-					_, out, err := testutils.CmdAdd(containerNs.Path(), args.ContainerID, "", []byte(conf), func() error { return cmdAdd(args) })
-					Expect(err).NotTo(HaveOccurred(), string(out))
-
-					err = testutils.CmdDel(containerNs.Path(), args.ContainerID, "", func() error { return cmdDel(args) })
-					Expect(err).NotTo(HaveOccurred(), string(out))
-
-					_, err = netlink.LinkByName(ifbDeviceName)
-					Expect(err).To(HaveOccurred())
-
-					return nil
-				})).To(Succeed())
-			})
-		})
-
-		Describe("Getting the host interface which plugin should work on from veth peer of container interface", func() {
-			It(fmt.Sprintf("[%s] should work with multiple host veth interfaces", ver), func() {
-				// create veth peer in host ns
-				vethName, peerName := "host-veth-peer1", "host-veth-peer2"
-				createVethInOneNs(hostNs, vethName, peerName)
-
-				conf := fmt.Sprintf(`{
-					"cniVersion": "%s",
-					"name": "cni-plugin-bandwidth-test",
-					"type": "bandwidth",
-					"ingressRate": 8,
-					"ingressBurst": 8,
-					"egressRate": 16,
-					"egressBurst": 8,
-					"prevResult": {
-						"interfaces": [
-							{
-								"name": "%s",
-								"sandbox": ""
-							},
-							{
-								"name": "%s",
-								"sandbox": ""
-							},
-							{
-								"name": "%s",
-								"sandbox": ""
-							},
-							{
-								"name": "%s",
-								"sandbox": "%s"
-							}
-						],
-						"ips": [
-							{
-								"version": "4",
-								"address": "%s/24",
-								"gateway": "10.0.0.1",
-								"interface": 1
-							}
-						],
-						"routes": []
-					}
-				}`, ver, vethName, peerName, hostIfname, containerIfname, containerNs.Path(), containerIP.String())
-
-				args := &skel.CmdArgs{
-					ContainerID: "dummy",
-					Netns:       containerNs.Path(),
-					IfName:      containerIfname,
-					StdinData:   []byte(conf),
-				}
-
-				Expect(hostNs.Do(func(netNS ns.NetNS) error {
-					defer GinkgoRecover()
-					r, out, err := testutils.CmdAdd(containerNs.Path(), args.ContainerID, "", []byte(conf), func() error { return cmdAdd(args) })
-					Expect(err).NotTo(HaveOccurred(), string(out))
-					result, err := types100.GetResult(r)
-					Expect(err).NotTo(HaveOccurred())
-
-					Expect(result.Interfaces).To(HaveLen(5))
-					Expect(result.Interfaces[4].Name).To(Equal(ifbDeviceName))
-					Expect(result.Interfaces[4].Sandbox).To(Equal(""))
-
-					ifbLink, err := netlink.LinkByName(ifbDeviceName)
-					Expect(err).NotTo(HaveOccurred())
-					Expect(ifbLink.Attrs().MTU).To(Equal(hostIfaceMTU))
-
-					qdiscs, err := netlink.QdiscList(ifbLink)
-					Expect(err).NotTo(HaveOccurred())
-
-					Expect(qdiscs).To(HaveLen(1))
-					Expect(qdiscs[0].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
-
-					Expect(qdiscs[0]).To(BeAssignableToTypeOf(&netlink.Tbf{}))
-					Expect(qdiscs[0].(*netlink.Tbf).Rate).To(Equal(uint64(2)))
-					Expect(qdiscs[0].(*netlink.Tbf).Limit).To(Equal(uint32(1)))
-
-					hostVethLink, err := netlink.LinkByName(hostIfname)
-					Expect(err).NotTo(HaveOccurred())
-
-					qdiscFilters, err := netlink.FilterList(hostVethLink, netlink.MakeHandle(0xffff, 0))
-					Expect(err).NotTo(HaveOccurred())
-
-					Expect(qdiscFilters).To(HaveLen(1))
-					Expect(qdiscFilters[0].(*netlink.U32).Actions[0].(*netlink.MirredAction).Ifindex).To(Equal(ifbLink.Attrs().Index))
-
-					return nil
-				})).To(Succeed())
-
-				Expect(hostNs.Do(func(n ns.NetNS) error {
-					defer GinkgoRecover()
-
-					ifbLink, err := netlink.LinkByName(hostIfname)
-					Expect(err).NotTo(HaveOccurred())
-
-					qdiscs, err := netlink.QdiscList(ifbLink)
-					Expect(err).NotTo(HaveOccurred())
-
-					Expect(qdiscs).To(HaveLen(2))
-					Expect(qdiscs[0].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
-
-					Expect(qdiscs[0]).To(BeAssignableToTypeOf(&netlink.Tbf{}))
-					Expect(qdiscs[0].(*netlink.Tbf).Rate).To(Equal(uint64(1)))
-					Expect(qdiscs[0].(*netlink.Tbf).Limit).To(Equal(uint32(1)))
-					return nil
-				})).To(Succeed())
-			})
-
-			It(fmt.Sprintf("[%s] should fail when container interface has no veth peer", ver), func() {
-				// create a macvlan device to be container interface
-				macvlanContainerIfname := "container-macv"
-				createMacvlan(containerNs, containerIfname, macvlanContainerIfname)
-
-				conf := fmt.Sprintf(`{
-					"cniVersion": "%s",
-					"name": "cni-plugin-bandwidth-test",
-					"type": "bandwidth",
-					"ingressRate": 8,
-					"ingressBurst": 8,
-					"egressRate": 16,
-					"egressBurst": 8,
-					"prevResult": {
-						"interfaces": [
-							{
-								"name": "%s",
-								"sandbox": ""
-							},
-							{
-								"name": "%s",
-								"sandbox": "%s"
-							}
-						],
-						"ips": [
-							{
-								"version": "4",
-								"address": "%s/24",
-								"gateway": "10.0.0.1",
-								"interface": 1
-							}
-						],
-						"routes": []
-					}
-				}`, ver, hostIfname, macvlanContainerIfname, containerNs.Path(), containerIP.String())
-
-				args := &skel.CmdArgs{
-					ContainerID: "dummy",
-					Netns:       containerNs.Path(),
-					IfName:      macvlanContainerIfname,
-					StdinData:   []byte(conf),
-				}
-
-				Expect(hostNs.Do(func(netNS ns.NetNS) error {
-					defer GinkgoRecover()
-
-					_, _, err := testutils.CmdAdd(containerNs.Path(), args.ContainerID, "", []byte(conf), func() error { return cmdAdd(args) })
-					Expect(err).To(HaveOccurred())
-
-					return nil
-				})).To(Succeed())
-			})
-
-			It(fmt.Sprintf("[%s] should fail when preResult has no interfaces", ver), func() {
-				conf := fmt.Sprintf(`{
-					"cniVersion": "%s",
-					"name": "cni-plugin-bandwidth-test",
-					"type": "bandwidth",
-					"ingressRate": 8,
-					"ingressBurst": 8,
-					"egressRate": 16,
-					"egressBurst": 8,
-					"prevResult": {
-						"interfaces": [],
-						"ips": [],
-						"routes": []
-					}
-				}`, ver)
-
-				args := &skel.CmdArgs{
-					ContainerID: "dummy",
-					Netns:       containerNs.Path(),
-					IfName:      "eth0",
-					StdinData:   []byte(conf),
-				}
-
-				Expect(hostNs.Do(func(netNS ns.NetNS) error {
-					defer GinkgoRecover()
-
-					_, _, err := testutils.CmdAdd(containerNs.Path(), args.ContainerID, "", []byte(conf), func() error { return cmdAdd(args) })
-					Expect(err).To(HaveOccurred())
-
-					return nil
-				})).To(Succeed())
-			})
-
-			It(fmt.Sprintf("[%s] should fail when veth peer of container interface does not match any of host interfaces in preResult", ver), func() {
-				// fake a non-exist host interface name
-				fakeHostIfname := fmt.Sprintf("%s-fake", hostIfname)
-
-				conf := fmt.Sprintf(`{
-					"cniVersion": "%s",
-					"name": "cni-plugin-bandwidth-test",
-					"type": "bandwidth",
-					"ingressRate": 8,
-					"ingressBurst": 8,
-					"egressRate": 16,
-					"egressBurst": 8,
-					"prevResult": {
-						"interfaces": [
-							{
-								"name": "%s",
-								"sandbox": ""
-							},
-							{
-								"name": "%s",
-								"sandbox": "%s"
-							}
-						],
-						"ips": [
-							{
-								"version": "4",
-								"address": "%s/24",
-								"gateway": "10.0.0.1",
-								"interface": 1
-							}
-						],
-						"routes": []
-					}
-				}`, ver, fakeHostIfname, containerIfname, containerNs.Path(), containerIP.String())
-
-				args := &skel.CmdArgs{
-					ContainerID: "dummy",
-					Netns:       containerNs.Path(),
-					IfName:      containerIfname,
-					StdinData:   []byte(conf),
-				}
-
-				Expect(hostNs.Do(func(netNS ns.NetNS) error {
-					defer GinkgoRecover()
-
-					_, _, err := testutils.CmdAdd(containerNs.Path(), args.ContainerID, "", []byte(conf), func() error { return cmdAdd(args) })
-					Expect(err).To(HaveOccurred())
-
-					return nil
-				})).To(Succeed())
-			})
-		})
-
-		Context(fmt.Sprintf("[%s] when chaining bandwidth plugin with PTP", ver), func() {
-			var ptpConf string
-			var rateInBits uint64
-			var burstInBits uint64
-			var packetInBytes int
-			var containerWithoutTbfNS ns.NetNS
-			var containerWithTbfNS ns.NetNS
-			var portServerWithTbf int
-			var portServerWithoutTbf int
-
-			var containerWithTbfRes types.Result
-			var containerWithoutTbfRes types.Result
-			var echoServerWithTbf *gexec.Session
-			var echoServerWithoutTbf *gexec.Session
-			var dataDir string
-
-			BeforeEach(func() {
-				rateInBytes := 1000
-				rateInBits = uint64(rateInBytes * 8)
-				burstInBits = rateInBits * 2
-				packetInBytes = rateInBytes * 25
-
-				var err error
-				dataDir, err = os.MkdirTemp("", "bandwidth_linux_test")
-				Expect(err).NotTo(HaveOccurred())
-
-				ptpConf = fmt.Sprintf(`{
-				    "cniVersion": "%s",
-				    "name": "myBWnet",
-				    "type": "ptp",
-				    "ipMasq": true,
-				    "mtu": 512,
-				    "ipam": {
-					"type": "host-local",
-					"subnet": "10.1.2.0/24",
-					"dataDir": "%s"
-				    }
-				}`, ver, dataDir)
-
-				const (
-					containerWithTbfIFName    = "ptp0"
-					containerWithoutTbfIFName = "ptp1"
-				)
-
-				containerWithTbfNS, err = testutils.NewNS()
-				Expect(err).NotTo(HaveOccurred())
-
-				containerWithoutTbfNS, err = testutils.NewNS()
-				Expect(err).NotTo(HaveOccurred())
-
-				By("create two containers, and use the bandwidth plugin on one of them")
-				Expect(hostNs.Do(func(ns.NetNS) error {
-					defer GinkgoRecover()
-
-					containerWithTbfRes, _, err = testutils.CmdAdd(containerWithTbfNS.Path(), "dummy", containerWithTbfIFName, []byte(ptpConf), func() error {
-						r, err := invoke.DelegateAdd(context.TODO(), "ptp", []byte(ptpConf), nil)
-						Expect(err).NotTo(HaveOccurred())
-						Expect(r.Print()).To(Succeed())
-
-						return err
-					})
-					Expect(err).NotTo(HaveOccurred())
-
-					containerWithoutTbfRes, _, err = testutils.CmdAdd(containerWithoutTbfNS.Path(), "dummy2", containerWithoutTbfIFName, []byte(ptpConf), func() error {
-						r, err := invoke.DelegateAdd(context.TODO(), "ptp", []byte(ptpConf), nil)
-						Expect(err).NotTo(HaveOccurred())
-						Expect(r.Print()).To(Succeed())
-
-						return err
-					})
-					Expect(err).NotTo(HaveOccurred())
-
-					containerWithTbfResult, err := types100.GetResult(containerWithTbfRes)
-					Expect(err).NotTo(HaveOccurred())
-
-					tbfPluginConf := &PluginConf{}
-					err = json.Unmarshal([]byte(ptpConf), &tbfPluginConf)
-					Expect(err).NotTo(HaveOccurred())
-
-					tbfPluginConf.RuntimeConfig.Bandwidth = &BandwidthEntry{
-						IngressBurst: burstInBits,
-						IngressRate:  rateInBits,
-						EgressBurst:  burstInBits,
-						EgressRate:   rateInBits,
-					}
-					tbfPluginConf.Type = "bandwidth"
-					newConfBytes, err := buildOneConfig("myBWnet", ver, tbfPluginConf, containerWithTbfResult)
-					Expect(err).NotTo(HaveOccurred())
-
-					args := &skel.CmdArgs{
-						ContainerID: "dummy3",
-						Netns:       containerWithTbfNS.Path(),
-						IfName:      containerWithTbfIFName,
-						StdinData:   newConfBytes,
-					}
-
-					result, out, err := testutils.CmdAdd(containerWithTbfNS.Path(), args.ContainerID, "", newConfBytes, func() error { return cmdAdd(args) })
-					Expect(err).NotTo(HaveOccurred(), string(out))
-
-					if testutils.SpecVersionHasCHECK(ver) {
-						// Do CNI Check
-						checkConf := &PluginConf{}
-						err = json.Unmarshal([]byte(ptpConf), &checkConf)
-						Expect(err).NotTo(HaveOccurred())
-
-						checkConf.RuntimeConfig.Bandwidth = &BandwidthEntry{
-							IngressBurst: burstInBits,
-							IngressRate:  rateInBits,
-							EgressBurst:  burstInBits,
-							EgressRate:   rateInBits,
-						}
-						checkConf.Type = "bandwidth"
-
-						newCheckBytes, err := buildOneConfig("myBWnet", ver, checkConf, result)
-						Expect(err).NotTo(HaveOccurred())
-
-						args = &skel.CmdArgs{
-							ContainerID: "dummy3",
-							Netns:       containerWithTbfNS.Path(),
-							IfName:      containerWithTbfIFName,
-							StdinData:   newCheckBytes,
-						}
-
-						err = testutils.CmdCheck(containerWithTbfNS.Path(), args.ContainerID, "", func() error { return cmdCheck(args) })
-						Expect(err).NotTo(HaveOccurred())
-					}
-
-					return nil
-				})).To(Succeed())
-
-				By("starting a tcp server on both containers")
-				portServerWithTbf, echoServerWithTbf = startEchoServerInNamespace(containerWithTbfNS)
-				portServerWithoutTbf, echoServerWithoutTbf = startEchoServerInNamespace(containerWithoutTbfNS)
-			})
-
-			AfterEach(func() {
-				Expect(os.RemoveAll(dataDir)).To(Succeed())
-
-				Expect(containerWithTbfNS.Close()).To(Succeed())
-				Expect(testutils.UnmountNS(containerWithTbfNS)).To(Succeed())
-				Expect(containerWithoutTbfNS.Close()).To(Succeed())
-				Expect(testutils.UnmountNS(containerWithoutTbfNS)).To(Succeed())
-
-				if echoServerWithoutTbf != nil {
-					echoServerWithoutTbf.Kill()
-				}
-				if echoServerWithTbf != nil {
-					echoServerWithTbf.Kill()
-				}
-			})
-
-			Measure("limits ingress traffic on veth device", func(b Benchmarker) {
-				var runtimeWithLimit time.Duration
-				var runtimeWithoutLimit time.Duration
-
-				By("gather timing statistics about both containers")
-				By("sending tcp traffic to the container that has traffic shaped", func() {
-					runtimeWithLimit = b.Time("with tbf", func() {
-						result, err := types100.GetResult(containerWithTbfRes)
-						Expect(err).NotTo(HaveOccurred())
-
-						makeTCPClientInNS(hostNs.Path(), result.IPs[0].Address.IP.String(), portServerWithTbf, packetInBytes)
-					})
-				})
-
-				By("sending tcp traffic to the container that does not have traffic shaped", func() {
-					runtimeWithoutLimit = b.Time("without tbf", func() {
-						result, err := types100.GetResult(containerWithoutTbfRes)
-						Expect(err).NotTo(HaveOccurred())
-
-						makeTCPClientInNS(hostNs.Path(), result.IPs[0].Address.IP.String(), portServerWithoutTbf, packetInBytes)
-					})
-				})
-
-				Expect(runtimeWithLimit).To(BeNumerically(">", runtimeWithoutLimit+1000*time.Millisecond))
-			}, 1)
-		})
+		// It(fmt.Sprintf("[%s] does not apply ingress when disabled", ver), func() {
+		// 	conf := fmt.Sprintf(`{
+		// 	"cniVersion": "%s",
+		// 	"name": "cni-plugin-bandwidth-test",
+		// 	"type": "bandwidth",
+		// 	"ingressRate": 0,
+		// 	"ingressBurst": 0,
+		// 	"egressRate": 8000,
+		// 	"egressBurst": 80,
+		// 	"prevResult": {
+		// 		"interfaces": [
+		// 			{
+		// 				"name": "%s",
+		// 				"sandbox": ""
+		// 			},
+		// 			{
+		// 				"name": "%s",
+		// 				"sandbox": "%s"
+		// 			}
+		// 		],
+		// 		"ips": [
+		// 			{
+		// 				"version": "4",
+		// 				"address": "%s/24",
+		// 				"gateway": "10.0.0.1",
+		// 				"interface": 1
+		// 			}
+		// 		],
+		// 		"routes": []
+		// 	}
+		// }`, ver, hostIfname, containerIfname, containerNs.Path(), containerIP.String())
+
+		// 	args := &skel.CmdArgs{
+		// 		ContainerID: "dummy",
+		// 		Netns:       containerNs.Path(),
+		// 		IfName:      containerIfname,
+		// 		StdinData:   []byte(conf),
+		// 	}
+
+		// 	Expect(hostNs.Do(func(netNS ns.NetNS) error {
+		// 		defer GinkgoRecover()
+
+		// 		_, out, err := testutils.CmdAdd(containerNs.Path(), args.ContainerID, ifbDeviceName, []byte(conf), func() error { return cmdAdd(args) })
+		// 		Expect(err).NotTo(HaveOccurred(), string(out))
+
+		// 		_, err = netlink.LinkByName(ifbDeviceName)
+		// 		Expect(err).NotTo(HaveOccurred())
+		// 		return nil
+		// 	})).To(Succeed())
+
+		// 	Expect(hostNs.Do(func(n ns.NetNS) error {
+		// 		defer GinkgoRecover()
+
+		// 		containerIfLink, err := netlink.LinkByName(hostIfname)
+		// 		Expect(err).NotTo(HaveOccurred())
+
+		// 		qdiscs, err := netlink.QdiscList(containerIfLink)
+		// 		Expect(err).NotTo(HaveOccurred())
+
+		// 		Expect(qdiscs).To(HaveLen(2))
+		// 		Expect(qdiscs[0]).NotTo(BeAssignableToTypeOf(&netlink.Tbf{}))
+		// 		Expect(qdiscs[1]).NotTo(BeAssignableToTypeOf(&netlink.Tbf{}))
+
+		// 		return nil
+		// 	})).To(Succeed())
+		// })
 	}
-
-	Describe("Validating input", func() {
-		It("Should allow only 4GB burst rate", func() {
-			err := validateRateAndBurst(5000, 4*1024*1024*1024*8-16) // 2 bytes less than the max should pass
-			Expect(err).NotTo(HaveOccurred())
-			err = validateRateAndBurst(5000, 4*1024*1024*1024*8) // we're 1 bit above MaxUint32
-			Expect(err).To(HaveOccurred())
-			err = validateRateAndBurst(0, 1)
-			Expect(err).To(HaveOccurred())
-			err = validateRateAndBurst(1, 0)
-			Expect(err).To(HaveOccurred())
-			err = validateRateAndBurst(0, 0)
-			Expect(err).NotTo(HaveOccurred())
-		})
-	})
 })
+
+// 	It(fmt.Sprintf("[%s] does not apply egress when disabled", ver), func() {
+// 		conf := fmt.Sprintf(`{
+// 			"cniVersion": "%s",
+// 			"name": "cni-plugin-bandwidth-test",
+// 			"type": "bandwidth",
+// 			"egressRate": 0,
+// 			"egressBurst": 0,
+// 			"ingressRate": 8000,
+// 			"ingressBurst": 80,
+// 			"prevResult": {
+// 				"interfaces": [
+// 					{
+// 						"name": "%s",
+// 						"sandbox": ""
+// 					},
+// 					{
+// 						"name": "%s",
+// 						"sandbox": "%s"
+// 					}
+// 				],
+// 				"ips": [
+// 					{
+// 						"version": "4",
+// 						"address": "%s/24",
+// 						"gateway": "10.0.0.1",
+// 						"interface": 1
+// 					}
+// 				],
+// 				"routes": []
+// 			}
+// 		}`, ver, hostIfname, containerIfname, containerNs.Path(), containerIP.String())
+
+// 		args := &skel.CmdArgs{
+// 			ContainerID: "dummy",
+// 			Netns:       containerNs.Path(),
+// 			IfName:      containerIfname,
+// 			StdinData:   []byte(conf),
+// 		}
+
+// 		Expect(hostNs.Do(func(netNS ns.NetNS) error {
+// 			defer GinkgoRecover()
+
+// 			_, out, err := testutils.CmdAdd(containerNs.Path(), args.ContainerID, ifbDeviceName, []byte(conf), func() error { return cmdAdd(args) })
+// 			Expect(err).NotTo(HaveOccurred(), string(out))
+
+// 			_, err = netlink.LinkByName(ifbDeviceName)
+// 			Expect(err).To(HaveOccurred())
+// 			return nil
+// 		})).To(Succeed())
+
+// 		Expect(hostNs.Do(func(n ns.NetNS) error {
+// 			defer GinkgoRecover()
+
+// 			containerIfLink, err := netlink.LinkByName(hostIfname)
+// 			Expect(err).NotTo(HaveOccurred())
+
+// 			qdiscs, err := netlink.QdiscList(containerIfLink)
+// 			Expect(err).NotTo(HaveOccurred())
+
+// 			Expect(qdiscs).To(HaveLen(1))
+// 			Expect(qdiscs[0].Attrs().LinkIndex).To(Equal(containerIfLink.Attrs().Index))
+
+// 			Expect(qdiscs[0]).To(BeAssignableToTypeOf(&netlink.Tbf{}))
+// 			Expect(qdiscs[0].(*netlink.Tbf).Rate).To(Equal(uint64(1000)))
+// 			Expect(qdiscs[0].(*netlink.Tbf).Limit).To(Equal(uint32(35)))
+// 			return nil
+// 		})).To(Succeed())
+// 	})
+
+// 	It(fmt.Sprintf("[%s] fails an invalid ingress config", ver), func() {
+// 		conf := fmt.Sprintf(`{
+// 			"cniVersion": "%s",
+// 			"name": "cni-plugin-bandwidth-test",
+// 			"type": "bandwidth",
+// 			"ingressRate": 0,
+// 			"ingressBurst": 123,
+// 			"egressRate": 123,
+// 			"egressBurst": 123,
+// 			"prevResult": {
+// 				"interfaces": [
+// 					{
+// 						"name": "%s",
+// 						"sandbox": ""
+// 					},
+// 					{
+// 						"name": "%s",
+// 						"sandbox": "%s"
+// 					}
+// 				],
+// 				"ips": [
+// 					{
+// 						"version": "4",
+// 						"address": "%s/24",
+// 						"gateway": "10.0.0.1",
+// 						"interface": 1
+// 					}
+// 				],
+// 				"routes": []
+// 			}
+// 		}`, ver, hostIfname, containerIfname, containerNs.Path(), containerIP.String())
+
+// 		args := &skel.CmdArgs{
+// 			ContainerID: "dummy",
+// 			Netns:       containerNs.Path(),
+// 			IfName:      "eth0",
+// 			StdinData:   []byte(conf),
+// 		}
+
+// 		Expect(hostNs.Do(func(netNS ns.NetNS) error {
+// 			defer GinkgoRecover()
+
+// 			_, _, err := testutils.CmdAdd(containerNs.Path(), args.ContainerID, "", []byte(conf), func() error { return cmdAdd(args) })
+// 			Expect(err).To(MatchError("if burst is set, rate must also be set"))
+// 			return nil
+// 		})).To(Succeed())
+// 	})
+
+// 	It(fmt.Sprintf("[%s] works with a Veth pair using runtime config", ver), func() {
+// 		conf := fmt.Sprintf(`{
+// 			"cniVersion": "%s",
+// 			"name": "cni-plugin-bandwidth-test",
+// 			"type": "bandwidth",
+// 			"runtimeConfig": {
+// 				"bandWidth": {
+// 					"ingressRate": 8,
+// 					"ingressBurst": 8,
+// 					"egressRate": 16,
+// 					"egressBurst": 9
+// 				}
+// 			},
+// 			"prevResult": {
+// 				"interfaces": [
+// 					{
+// 						"name": "%s",
+// 						"sandbox": ""
+// 					},
+// 					{
+// 						"name": "%s",
+// 						"sandbox": "%s"
+// 					}
+// 				],
+// 				"ips": [
+// 					{
+// 						"version": "4",
+// 						"address": "%s/24",
+// 						"gateway": "10.0.0.1",
+// 						"interface": 1
+// 					}
+// 				],
+// 				"routes": []
+// 			}
+// 		}`, ver, hostIfname, containerIfname, containerNs.Path(), containerIP.String())
+
+// 		args := &skel.CmdArgs{
+// 			ContainerID: "dummy",
+// 			Netns:       containerNs.Path(),
+// 			IfName:      containerIfname,
+// 			StdinData:   []byte(conf),
+// 		}
+
+// 		Expect(hostNs.Do(func(netNS ns.NetNS) error {
+// 			defer GinkgoRecover()
+// 			r, out, err := testutils.CmdAdd(containerNs.Path(), args.ContainerID, "", []byte(conf), func() error { return cmdAdd(args) })
+// 			Expect(err).NotTo(HaveOccurred(), string(out))
+// 			result, err := types100.GetResult(r)
+// 			Expect(err).NotTo(HaveOccurred())
+
+// 			Expect(result.Interfaces).To(HaveLen(3))
+// 			Expect(result.Interfaces[2].Name).To(Equal(ifbDeviceName))
+// 			Expect(result.Interfaces[2].Sandbox).To(Equal(""))
+
+// 			ifbLink, err := netlink.LinkByName(ifbDeviceName)
+// 			Expect(err).NotTo(HaveOccurred())
+// 			Expect(ifbLink.Attrs().MTU).To(Equal(hostIfaceMTU))
+
+// 			qdiscs, err := netlink.QdiscList(ifbLink)
+// 			Expect(err).NotTo(HaveOccurred())
+
+// 			Expect(qdiscs).To(HaveLen(1))
+// 			Expect(qdiscs[0].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
+
+// 			Expect(qdiscs[0]).To(BeAssignableToTypeOf(&netlink.Tbf{}))
+// 			Expect(qdiscs[0].(*netlink.Tbf).Rate).To(Equal(uint64(2)))
+// 			Expect(qdiscs[0].(*netlink.Tbf).Limit).To(Equal(uint32(1)))
+
+// 			hostVethLink, err := netlink.LinkByName(hostIfname)
+// 			Expect(err).NotTo(HaveOccurred())
+
+// 			qdiscFilters, err := netlink.FilterList(hostVethLink, netlink.MakeHandle(0xffff, 0))
+// 			Expect(err).NotTo(HaveOccurred())
+
+// 			Expect(qdiscFilters).To(HaveLen(1))
+// 			Expect(qdiscFilters[0].(*netlink.U32).Actions[0].(*netlink.MirredAction).Ifindex).To(Equal(ifbLink.Attrs().Index))
+
+// 			return nil
+// 		})).To(Succeed())
+
+// 		Expect(hostNs.Do(func(n ns.NetNS) error {
+// 			defer GinkgoRecover()
+
+// 			ifbLink, err := netlink.LinkByName(hostIfname)
+// 			Expect(err).NotTo(HaveOccurred())
+
+// 			qdiscs, err := netlink.QdiscList(ifbLink)
+// 			Expect(err).NotTo(HaveOccurred())
+
+// 			Expect(qdiscs).To(HaveLen(2))
+// 			Expect(qdiscs[0].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
+
+// 			Expect(qdiscs[0]).To(BeAssignableToTypeOf(&netlink.Tbf{}))
+// 			Expect(qdiscs[0].(*netlink.Tbf).Rate).To(Equal(uint64(1)))
+// 			Expect(qdiscs[0].(*netlink.Tbf).Limit).To(Equal(uint32(1)))
+// 			return nil
+// 		})).To(Succeed())
+// 	})
+
+// 	It(fmt.Sprintf("[%s] should apply static config when both static config and runtime config exist", ver), func() {
+// 		conf := fmt.Sprintf(`{
+// 			"cniVersion": "%s",
+// 			"name": "cni-plugin-bandwidth-test",
+// 			"type": "bandwidth",
+// 			"ingressRate": 0,
+// 			"ingressBurst": 123,
+// 			"egressRate": 123,
+// 			"egressBurst": 123,
+// 			"runtimeConfig": {
+// 				"bandWidth": {
+// 					"ingressRate": 8,
+// 					"ingressBurst": 8,
+// 					"egressRate": 16,
+// 					"egressBurst": 9
+// 				}
+// 			},
+// 			"prevResult": {
+// 				"interfaces": [
+// 					{
+// 						"name": "%s",
+// 						"sandbox": ""
+// 					},
+// 					{
+// 						"name": "%s",
+// 						"sandbox": "%s"
+// 					}
+// 				],
+// 				"ips": [
+// 					{
+// 						"version": "4",
+// 						"address": "%s/24",
+// 						"gateway": "10.0.0.1",
+// 						"interface": 1
+// 					}
+// 				],
+// 				"routes": []
+// 			}
+// 		}`, ver, hostIfname, containerIfname, containerNs.Path(), containerIP.String())
+
+// 		args := &skel.CmdArgs{
+// 			ContainerID: "dummy",
+// 			Netns:       containerNs.Path(),
+// 			IfName:      "eth0",
+// 			StdinData:   []byte(conf),
+// 		}
+
+// 		Expect(hostNs.Do(func(netNS ns.NetNS) error {
+// 			defer GinkgoRecover()
+
+// 			_, _, err := testutils.CmdAdd(containerNs.Path(), args.ContainerID, "", []byte(conf), func() error { return cmdAdd(args) })
+// 			Expect(err).To(MatchError("if burst is set, rate must also be set"))
+// 			return nil
+// 		})).To(Succeed())
+// 	})
+// })
+
+// 		Describe("cmdDEL", func() {
+// 			It(fmt.Sprintf("[%s] works with a Veth pair using 0.3.0 config", ver), func() {
+// 				conf := fmt.Sprintf(`{
+// 					"cniVersion": "%s",
+// 					"name": "cni-plugin-bandwidth-test",
+// 					"type": "bandwidth",
+// 					"ingressRate": 8,
+// 					"ingressBurst": 8,
+// 					"egressRate": 9,
+// 					"egressBurst": 9,
+// 					"prevResult": {
+// 						"interfaces": [
+// 							{
+// 								"name": "%s",
+// 								"sandbox": ""
+// 							},
+// 							{
+// 								"name": "%s",
+// 								"sandbox": "%s"
+// 							}
+// 						],
+// 						"ips": [
+// 							{
+// 								"version": "4",
+// 								"address": "%s/24",
+// 								"gateway": "10.0.0.1",
+// 								"interface": 1
+// 							}
+// 						],
+// 						"routes": []
+// 					}
+// 				}`, ver, hostIfname, containerIfname, containerNs.Path(), containerIP.String())
+
+// 				args := &skel.CmdArgs{
+// 					ContainerID: "dummy",
+// 					Netns:       containerNs.Path(),
+// 					IfName:      containerIfname,
+// 					StdinData:   []byte(conf),
+// 				}
+
+// 				Expect(hostNs.Do(func(netNS ns.NetNS) error {
+// 					defer GinkgoRecover()
+// 					_, out, err := testutils.CmdAdd(containerNs.Path(), args.ContainerID, "", []byte(conf), func() error { return cmdAdd(args) })
+// 					Expect(err).NotTo(HaveOccurred(), string(out))
+
+// 					err = testutils.CmdDel(containerNs.Path(), args.ContainerID, "", func() error { return cmdDel(args) })
+// 					Expect(err).NotTo(HaveOccurred(), string(out))
+
+// 					_, err = netlink.LinkByName(ifbDeviceName)
+// 					Expect(err).To(HaveOccurred())
+
+// 					return nil
+// 				})).To(Succeed())
+// 			})
+// 		})
+
+// 		Describe("Getting the host interface which plugin should work on from veth peer of container interface", func() {
+// 			It(fmt.Sprintf("[%s] should work with multiple host veth interfaces", ver), func() {
+// 				// create veth peer in host ns
+// 				vethName, peerName := "host-veth-peer1", "host-veth-peer2"
+// 				createVethInOneNs(hostNs, vethName, peerName)
+
+// 				conf := fmt.Sprintf(`{
+// 					"cniVersion": "%s",
+// 					"name": "cni-plugin-bandwidth-test",
+// 					"type": "bandwidth",
+// 					"ingressRate": 8,
+// 					"ingressBurst": 8,
+// 					"egressRate": 16,
+// 					"egressBurst": 8,
+// 					"prevResult": {
+// 						"interfaces": [
+// 							{
+// 								"name": "%s",
+// 								"sandbox": ""
+// 							},
+// 							{
+// 								"name": "%s",
+// 								"sandbox": ""
+// 							},
+// 							{
+// 								"name": "%s",
+// 								"sandbox": ""
+// 							},
+// 							{
+// 								"name": "%s",
+// 								"sandbox": "%s"
+// 							}
+// 						],
+// 						"ips": [
+// 							{
+// 								"version": "4",
+// 								"address": "%s/24",
+// 								"gateway": "10.0.0.1",
+// 								"interface": 1
+// 							}
+// 						],
+// 						"routes": []
+// 					}
+// 				}`, ver, vethName, peerName, hostIfname, containerIfname, containerNs.Path(), containerIP.String())
+
+// 				args := &skel.CmdArgs{
+// 					ContainerID: "dummy",
+// 					Netns:       containerNs.Path(),
+// 					IfName:      containerIfname,
+// 					StdinData:   []byte(conf),
+// 				}
+
+// 				Expect(hostNs.Do(func(netNS ns.NetNS) error {
+// 					defer GinkgoRecover()
+// 					r, out, err := testutils.CmdAdd(containerNs.Path(), args.ContainerID, "", []byte(conf), func() error { return cmdAdd(args) })
+// 					Expect(err).NotTo(HaveOccurred(), string(out))
+// 					result, err := types100.GetResult(r)
+// 					Expect(err).NotTo(HaveOccurred())
+
+// 					Expect(result.Interfaces).To(HaveLen(5))
+// 					Expect(result.Interfaces[4].Name).To(Equal(ifbDeviceName))
+// 					Expect(result.Interfaces[4].Sandbox).To(Equal(""))
+
+// 					ifbLink, err := netlink.LinkByName(ifbDeviceName)
+// 					Expect(err).NotTo(HaveOccurred())
+// 					Expect(ifbLink.Attrs().MTU).To(Equal(hostIfaceMTU))
+
+// 					qdiscs, err := netlink.QdiscList(ifbLink)
+// 					Expect(err).NotTo(HaveOccurred())
+
+// 					Expect(qdiscs).To(HaveLen(1))
+// 					Expect(qdiscs[0].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
+
+// 					Expect(qdiscs[0]).To(BeAssignableToTypeOf(&netlink.Tbf{}))
+// 					Expect(qdiscs[0].(*netlink.Tbf).Rate).To(Equal(uint64(2)))
+// 					Expect(qdiscs[0].(*netlink.Tbf).Limit).To(Equal(uint32(1)))
+
+// 					hostVethLink, err := netlink.LinkByName(hostIfname)
+// 					Expect(err).NotTo(HaveOccurred())
+
+// 					qdiscFilters, err := netlink.FilterList(hostVethLink, netlink.MakeHandle(0xffff, 0))
+// 					Expect(err).NotTo(HaveOccurred())
+
+// 					Expect(qdiscFilters).To(HaveLen(1))
+// 					Expect(qdiscFilters[0].(*netlink.U32).Actions[0].(*netlink.MirredAction).Ifindex).To(Equal(ifbLink.Attrs().Index))
+
+// 					return nil
+// 				})).To(Succeed())
+
+// 				Expect(hostNs.Do(func(n ns.NetNS) error {
+// 					defer GinkgoRecover()
+
+// 					ifbLink, err := netlink.LinkByName(hostIfname)
+// 					Expect(err).NotTo(HaveOccurred())
+
+// 					qdiscs, err := netlink.QdiscList(ifbLink)
+// 					Expect(err).NotTo(HaveOccurred())
+
+// 					Expect(qdiscs).To(HaveLen(2))
+// 					Expect(qdiscs[0].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
+
+// 					Expect(qdiscs[0]).To(BeAssignableToTypeOf(&netlink.Htb{}))
+// 					Expect(qdiscs[0].(*netlink.Htb).Defcls).To(Equal(48))
+
+// 					classes, err := netlink.ClassList(ifbLink, qdiscs[0].Attrs().Handle)
+// 					Expect(err).NotTo(HaveOccurred())
+// 					Expect(classes).To(HaveLen(2))
+
+// 					Expect(classes[0]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
+// 					Expect(classes[0].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, uint16(qdiscs[0].(*netlink.Htb).Defcls))))
+// 					return nil
+// 				})).To(Succeed())
+// 			})
+
+// 			It(fmt.Sprintf("[%s] should fail when container interface has no veth peer", ver), func() {
+// 				// create a macvlan device to be container interface
+// 				macvlanContainerIfname := "container-macv"
+// 				createMacvlan(containerNs, containerIfname, macvlanContainerIfname)
+
+// 				conf := fmt.Sprintf(`{
+// 					"cniVersion": "%s",
+// 					"name": "cni-plugin-bandwidth-test",
+// 					"type": "bandwidth",
+// 					"ingressRate": 8,
+// 					"ingressBurst": 8,
+// 					"egressRate": 16,
+// 					"egressBurst": 8,
+// 					"prevResult": {
+// 						"interfaces": [
+// 							{
+// 								"name": "%s",
+// 								"sandbox": ""
+// 							},
+// 							{
+// 								"name": "%s",
+// 								"sandbox": "%s"
+// 							}
+// 						],
+// 						"ips": [
+// 							{
+// 								"version": "4",
+// 								"address": "%s/24",
+// 								"gateway": "10.0.0.1",
+// 								"interface": 1
+// 							}
+// 						],
+// 						"routes": []
+// 					}
+// 				}`, ver, hostIfname, macvlanContainerIfname, containerNs.Path(), containerIP.String())
+
+// 				args := &skel.CmdArgs{
+// 					ContainerID: "dummy",
+// 					Netns:       containerNs.Path(),
+// 					IfName:      macvlanContainerIfname,
+// 					StdinData:   []byte(conf),
+// 				}
+
+// 				Expect(hostNs.Do(func(netNS ns.NetNS) error {
+// 					defer GinkgoRecover()
+
+// 					_, _, err := testutils.CmdAdd(containerNs.Path(), args.ContainerID, "", []byte(conf), func() error { return cmdAdd(args) })
+// 					Expect(err).To(HaveOccurred())
+
+// 					return nil
+// 				})).To(Succeed())
+// 			})
+
+// 			It(fmt.Sprintf("[%s] should fail when preResult has no interfaces", ver), func() {
+// 				conf := fmt.Sprintf(`{
+// 					"cniVersion": "%s",
+// 					"name": "cni-plugin-bandwidth-test",
+// 					"type": "bandwidth",
+// 					"ingressRate": 8,
+// 					"ingressBurst": 8,
+// 					"egressRate": 16,
+// 					"egressBurst": 8,
+// 					"prevResult": {
+// 						"interfaces": [],
+// 						"ips": [],
+// 						"routes": []
+// 					}
+// 				}`, ver)
+
+// 				args := &skel.CmdArgs{
+// 					ContainerID: "dummy",
+// 					Netns:       containerNs.Path(),
+// 					IfName:      "eth0",
+// 					StdinData:   []byte(conf),
+// 				}
+
+// 				Expect(hostNs.Do(func(netNS ns.NetNS) error {
+// 					defer GinkgoRecover()
+
+// 					_, _, err := testutils.CmdAdd(containerNs.Path(), args.ContainerID, "", []byte(conf), func() error { return cmdAdd(args) })
+// 					Expect(err).To(HaveOccurred())
+
+// 					return nil
+// 				})).To(Succeed())
+// 			})
+
+// 			It(fmt.Sprintf("[%s] should fail when veth peer of container interface does not match any of host interfaces in preResult", ver), func() {
+// 				// fake a non-exist host interface name
+// 				fakeHostIfname := fmt.Sprintf("%s-fake", hostIfname)
+
+// 				conf := fmt.Sprintf(`{
+// 					"cniVersion": "%s",
+// 					"name": "cni-plugin-bandwidth-test",
+// 					"type": "bandwidth",
+// 					"ingressRate": 8,
+// 					"ingressBurst": 8,
+// 					"egressRate": 16,
+// 					"egressBurst": 8,
+// 					"prevResult": {
+// 						"interfaces": [
+// 							{
+// 								"name": "%s",
+// 								"sandbox": ""
+// 							},
+// 							{
+// 								"name": "%s",
+// 								"sandbox": "%s"
+// 							}
+// 						],
+// 						"ips": [
+// 							{
+// 								"version": "4",
+// 								"address": "%s/24",
+// 								"gateway": "10.0.0.1",
+// 								"interface": 1
+// 							}
+// 						],
+// 						"routes": []
+// 					}
+// 				}`, ver, fakeHostIfname, containerIfname, containerNs.Path(), containerIP.String())
+
+// 				args := &skel.CmdArgs{
+// 					ContainerID: "dummy",
+// 					Netns:       containerNs.Path(),
+// 					IfName:      containerIfname,
+// 					StdinData:   []byte(conf),
+// 				}
+
+// 				Expect(hostNs.Do(func(netNS ns.NetNS) error {
+// 					defer GinkgoRecover()
+
+// 					_, _, err := testutils.CmdAdd(containerNs.Path(), args.ContainerID, "", []byte(conf), func() error { return cmdAdd(args) })
+// 					Expect(err).To(HaveOccurred())
+
+// 					return nil
+// 				})).To(Succeed())
+// 			})
+// 		})
+
+// 		Context(fmt.Sprintf("[%s] when chaining bandwidth plugin with PTP", ver), func() {
+// 			var ptpConf string
+// 			var rateInBits uint64
+// 			var burstInBits uint64
+// 			var packetInBytes int
+// 			var containerWithoutTbfNS ns.NetNS
+// 			var containerWithTbfNS ns.NetNS
+// 			var portServerWithTbf int
+// 			var portServerWithoutTbf int
+
+// 			var containerWithTbfRes types.Result
+// 			var containerWithoutTbfRes types.Result
+// 			var echoServerWithTbf *gexec.Session
+// 			var echoServerWithoutTbf *gexec.Session
+// 			var dataDir string
+
+// 			BeforeEach(func() {
+// 				rateInBytes := 1000
+// 				rateInBits = uint64(rateInBytes * 8)
+// 				burstInBits = rateInBits * 2
+// 				packetInBytes = rateInBytes * 25
+
+// 				var err error
+// 				dataDir, err = os.MkdirTemp("", "bandwidth_linux_test")
+// 				Expect(err).NotTo(HaveOccurred())
+
+// 				ptpConf = fmt.Sprintf(`{
+// 				    "cniVersion": "%s",
+// 				    "name": "myBWnet",
+// 				    "type": "ptp",
+// 				    "ipMasq": true,
+// 				    "mtu": 512,
+// 				    "ipam": {
+// 					"type": "host-local",
+// 					"subnet": "10.1.2.0/24",
+// 					"dataDir": "%s"
+// 				    }
+// 				}`, ver, dataDir)
+
+// 				const (
+// 					containerWithTbfIFName    = "ptp0"
+// 					containerWithoutTbfIFName = "ptp1"
+// 				)
+
+// 				containerWithTbfNS, err = testutils.NewNS()
+// 				Expect(err).NotTo(HaveOccurred())
+
+// 				containerWithoutTbfNS, err = testutils.NewNS()
+// 				Expect(err).NotTo(HaveOccurred())
+
+// 				By("create two containers, and use the bandwidth plugin on one of them")
+// 				Expect(hostNs.Do(func(ns.NetNS) error {
+// 					defer GinkgoRecover()
+
+// 					containerWithTbfRes, _, err = testutils.CmdAdd(containerWithTbfNS.Path(), "dummy", containerWithTbfIFName, []byte(ptpConf), func() error {
+// 						r, err := invoke.DelegateAdd(context.TODO(), "ptp", []byte(ptpConf), nil)
+// 						Expect(err).NotTo(HaveOccurred())
+// 						Expect(r.Print()).To(Succeed())
+
+// 						return err
+// 					})
+// 					Expect(err).NotTo(HaveOccurred())
+
+// 					containerWithoutTbfRes, _, err = testutils.CmdAdd(containerWithoutTbfNS.Path(), "dummy2", containerWithoutTbfIFName, []byte(ptpConf), func() error {
+// 						r, err := invoke.DelegateAdd(context.TODO(), "ptp", []byte(ptpConf), nil)
+// 						Expect(err).NotTo(HaveOccurred())
+// 						Expect(r.Print()).To(Succeed())
+
+// 						return err
+// 					})
+// 					Expect(err).NotTo(HaveOccurred())
+
+// 					containerWithTbfResult, err := types100.GetResult(containerWithTbfRes)
+// 					Expect(err).NotTo(HaveOccurred())
+
+// 					tbfPluginConf := &PluginConf{}
+// 					err = json.Unmarshal([]byte(ptpConf), &tbfPluginConf)
+// 					Expect(err).NotTo(HaveOccurred())
+
+// 					tbfPluginConf.RuntimeConfig.Bandwidth = &BandwidthEntry{
+// 						IngressBurst: burstInBits,
+// 						IngressRate:  rateInBits,
+// 						EgressBurst:  burstInBits,
+// 						EgressRate:   rateInBits,
+// 					}
+// 					tbfPluginConf.Type = "bandwidth"
+// 					newConfBytes, err := buildOneConfig("myBWnet", ver, tbfPluginConf, containerWithTbfResult)
+// 					Expect(err).NotTo(HaveOccurred())
+
+// 					args := &skel.CmdArgs{
+// 						ContainerID: "dummy3",
+// 						Netns:       containerWithTbfNS.Path(),
+// 						IfName:      containerWithTbfIFName,
+// 						StdinData:   newConfBytes,
+// 					}
+
+// 					result, out, err := testutils.CmdAdd(containerWithTbfNS.Path(), args.ContainerID, "", newConfBytes, func() error { return cmdAdd(args) })
+// 					Expect(err).NotTo(HaveOccurred(), string(out))
+
+// 					if testutils.SpecVersionHasCHECK(ver) {
+// 						// Do CNI Check
+// 						checkConf := &PluginConf{}
+// 						err = json.Unmarshal([]byte(ptpConf), &checkConf)
+// 						Expect(err).NotTo(HaveOccurred())
+
+// 						checkConf.RuntimeConfig.Bandwidth = &BandwidthEntry{
+// 							IngressBurst: burstInBits,
+// 							IngressRate:  rateInBits,
+// 							EgressBurst:  burstInBits,
+// 							EgressRate:   rateInBits,
+// 						}
+// 						checkConf.Type = "bandwidth"
+
+// 						newCheckBytes, err := buildOneConfig("myBWnet", ver, checkConf, result)
+// 						Expect(err).NotTo(HaveOccurred())
+
+// 						args = &skel.CmdArgs{
+// 							ContainerID: "dummy3",
+// 							Netns:       containerWithTbfNS.Path(),
+// 							IfName:      containerWithTbfIFName,
+// 							StdinData:   newCheckBytes,
+// 						}
+
+// 						err = testutils.CmdCheck(containerWithTbfNS.Path(), args.ContainerID, "", func() error { return cmdCheck(args) })
+// 						Expect(err).NotTo(HaveOccurred())
+// 					}
+
+// 					return nil
+// 				})).To(Succeed())
+
+// 				By("starting a tcp server on both containers")
+// 				portServerWithTbf, echoServerWithTbf = startEchoServerInNamespace(containerWithTbfNS)
+// 				portServerWithoutTbf, echoServerWithoutTbf = startEchoServerInNamespace(containerWithoutTbfNS)
+// 			})
+
+// 			AfterEach(func() {
+// 				Expect(os.RemoveAll(dataDir)).To(Succeed())
+
+// 				Expect(containerWithTbfNS.Close()).To(Succeed())
+// 				Expect(testutils.UnmountNS(containerWithTbfNS)).To(Succeed())
+// 				Expect(containerWithoutTbfNS.Close()).To(Succeed())
+// 				Expect(testutils.UnmountNS(containerWithoutTbfNS)).To(Succeed())
+
+// 				if echoServerWithoutTbf != nil {
+// 					echoServerWithoutTbf.Kill()
+// 				}
+// 				if echoServerWithTbf != nil {
+// 					echoServerWithTbf.Kill()
+// 				}
+// 			})
+
+// 			Measure("limits ingress traffic on veth device", func(b Benchmarker) {
+// 				var runtimeWithLimit time.Duration
+// 				var runtimeWithoutLimit time.Duration
+
+// 				By("gather timing statistics about both containers")
+// 				By("sending tcp traffic to the container that has traffic shaped", func() {
+// 					runtimeWithLimit = b.Time("with tbf", func() {
+// 						result, err := types100.GetResult(containerWithTbfRes)
+// 						Expect(err).NotTo(HaveOccurred())
+
+// 						makeTCPClientInNS(hostNs.Path(), result.IPs[0].Address.IP.String(), portServerWithTbf, packetInBytes)
+// 					})
+// 				})
+
+// 				By("sending tcp traffic to the container that does not have traffic shaped", func() {
+// 					runtimeWithoutLimit = b.Time("without tbf", func() {
+// 						result, err := types100.GetResult(containerWithoutTbfRes)
+// 						Expect(err).NotTo(HaveOccurred())
+
+// 						makeTCPClientInNS(hostNs.Path(), result.IPs[0].Address.IP.String(), portServerWithoutTbf, packetInBytes)
+// 					})
+// 				})
+
+// 				Expect(runtimeWithLimit).To(BeNumerically(">", runtimeWithoutLimit+1000*time.Millisecond))
+// 			}, 1)
+// 		})
+// 	}
+
+// 	Describe("Validating input", func() {
+// 		It("Should allow only 4GB burst rate", func() {
+// 			err := validateRateAndBurst(5000, 4*1024*1024*1024*8-16) // 2 bytes less than the max should pass
+// 			Expect(err).NotTo(HaveOccurred())
+// 			err = validateRateAndBurst(5000, 4*1024*1024*1024*8) // we're 1 bit above MaxUint32
+// 			Expect(err).To(HaveOccurred())
+// 			err = validateRateAndBurst(0, 1)
+// 			Expect(err).To(HaveOccurred())
+// 			err = validateRateAndBurst(1, 0)
+// 			Expect(err).To(HaveOccurred())
+// 			err = validateRateAndBurst(0, 0)
+// 			Expect(err).NotTo(HaveOccurred())
+// 		})
+// 	})
+// })
