@@ -177,7 +177,7 @@ func validateSubnets(subnets []string) error {
 		for _, subnet := range subnets {
 			_, _, err := net.ParseCIDR(subnet)
 			if err != nil {
-				return err
+				return fmt.Errorf("bad subnet provided %s, details %s", subnet, err)
 			}
 		}
 	}
@@ -302,101 +302,121 @@ func cmdCheck(args *skel.CmdArgs) error {
 		return fmt.Errorf("must be called as a chained plugin")
 	}
 
-	// result, err := current.NewResultFromResult(bwConf.PrevResult)
-	// if err != nil {
-	// 	return fmt.Errorf("could not convert result to current version: %v", err)
-	// }
+	result, err := current.NewResultFromResult(bwConf.PrevResult)
+	if err != nil {
+		return fmt.Errorf("could not convert result to current version: %v", err)
+	}
 
-	// netns, err := ns.GetNS(args.Netns)
-	// if err != nil {
-	// 	return fmt.Errorf("failed to open netns %q: %v", netns, err)
-	// }
-	// defer netns.Close()
+	netns, err := ns.GetNS(args.Netns)
+	if err != nil {
+		return fmt.Errorf("failed to open netns %q: %v", netns, err)
+	}
+	defer netns.Close()
 
-	// hostInterface, err := getHostInterface(result.Interfaces, args.IfName, netns)
-	// if err != nil {
-	// 	return err
-	// }
-	// link, err := netlink.LinkByName(hostInterface.Name)
-	// if err != nil {
-	// 	return err
-	// }
+	hostInterface, err := getHostInterface(result.Interfaces, args.IfName, netns)
+	if err != nil {
+		return err
+	}
+	link, err := netlink.LinkByName(hostInterface.Name)
+	if err != nil {
+		return err
+	}
 
 	bandwidth := getBandwidth(bwConf)
 
-	// if bandwidth.IngressRate > 0 && bandwidth.IngressBurst > 0 {
-	// 	rateInBytes := bandwidth.IngressRate / 8
-	// 	burstInBytes := bandwidth.IngressBurst / 8
-	// 	bufferInBytes := buffer(rateInBytes, uint32(burstInBytes))
-	// 	latency := latencyInUsec(latencyInMillis)
-	// 	limitInBytes := limit(rateInBytes, latency, uint32(burstInBytes))
-
-	// 	qdiscs, err := SafeQdiscList(link)
-	// 	if err != nil {
-	// 		return err
-	// 	}
-	// 	if len(qdiscs) == 0 {
-	// 		return fmt.Errorf("Failed to find qdisc")
-	// 	}
-
-	// 	for _, qdisc := range qdiscs {
-	// 		htb, isHtb := qdisc.(*netlink.Htb)
-	// 		if !isHtb {
-	// 			break
-	// 		}
-	// 		if htb.Defcls != 30 {
-	// 			return fmt.Errorf("Default class does not match")
-	// 		}
-
-	// 		htb.
-	// 		if tbf.Limit != limitInBytes {
-	// 			return fmt.Errorf("Limit doesn't match")
-	// 		}
-	// 		if tbf.Buffer != bufferInBytes {
-	// 			return fmt.Errorf("Buffer doesn't match")
-	// 		}
-	// 	}
-	// }
-
-	// if bandwidth.EgressRate > 0 && bandwidth.EgressBurst > 0 {
-	// 	rateInBytes := bandwidth.EgressRate / 8
-	// 	burstInBytes := bandwidth.EgressBurst / 8
-	// 	bufferInBytes := buffer(rateInBytes, uint32(burstInBytes))
-	// 	latency := latencyInUsec(latencyInMillis)
-	// 	limitInBytes := limit(rateInBytes, latency, uint32(burstInBytes))
-
-	// 	ifbDeviceName := getIfbDeviceName(bwConf.Name, args.ContainerID)
-
-	// 	ifbDevice, err := netlink.LinkByName(ifbDeviceName)
-	// 	if err != nil {
-	// 		return fmt.Errorf("get ifb device: %s", err)
-	// 	}
-
-	// 	qdiscs, err := SafeQdiscList(ifbDevice)
-	// 	if err != nil {
-	// 		return err
-	// 	}
-	// 	if len(qdiscs) == 0 {
-	// 		return fmt.Errorf("Failed to find qdisc")
-	// 	}
-
-	// 	for _, qdisc := range qdiscs {
-	// 		tbf, isTbf := qdisc.(*netlink.Tbf)
-	// 		if !isTbf {
-	// 			break
-	// 		}
-	// 		if tbf.Rate != rateInBytes {
-	// 			return fmt.Errorf("Rate doesn't match")
-	// 		}
-	// 		if tbf.Limit != limitInBytes {
-	// 			return fmt.Errorf("Limit doesn't match")
-	// 		}
-	// 		if tbf.Buffer != bufferInBytes {
-	// 			return fmt.Errorf("Buffer doesn't match")
-	// 		}
-	// 	}
-	// }
-
 	err = validateSubnets(bandwidth.NonShapedSubnets)
-	return err
+	if err != nil {
+		return fmt.Errorf("failed to check subnets, details %s", err)
+	}
+
+	if bandwidth.IngressRate > 0 && bandwidth.IngressBurst > 0 {
+		rateInBytes := bandwidth.IngressRate / 8
+		burstInBytes := bandwidth.IngressBurst / 8
+		bufferInBytes := buffer(rateInBytes, uint32(burstInBytes))
+		err = checkHTB(link, rateInBytes, bufferInBytes)
+		if err != nil {
+			return err
+		}
+	}
+	if bandwidth.EgressRate > 0 && bandwidth.EgressBurst > 0 {
+		rateInBytes := bandwidth.EgressRate / 8
+		burstInBytes := bandwidth.EgressBurst / 8
+		bufferInBytes := buffer(rateInBytes, uint32(burstInBytes))
+		ifbDeviceName := getIfbDeviceName(bwConf.Name, args.ContainerID)
+		ifbDevice, err := netlink.LinkByName(ifbDeviceName)
+		if err != nil {
+			return fmt.Errorf("get ifb device: %s", err)
+		}
+		err = checkHTB(ifbDevice, rateInBytes, bufferInBytes)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func checkHTB(link netlink.Link, rateInBytes uint64, bufferInBytes uint32) error {
+	qdiscs, err := SafeQdiscList(link)
+	if err != nil {
+		return err
+	}
+	if len(qdiscs) == 0 {
+		return fmt.Errorf("Failed to find qdisc")
+	}
+	foundHTB := false
+	for _, qdisc := range qdiscs {
+		htb, isHtb := qdisc.(*netlink.Htb)
+		if !isHtb {
+			continue
+		}
+
+		if foundHTB {
+			return fmt.Errorf("Several htb qdisc found for device %s", link.Attrs().Name)
+		}
+
+		foundHTB = true
+		if htb.Defcls != netlink.MakeHandle(1, 30) {
+			return fmt.Errorf("Default class does not match")
+		}
+
+		classes, err := netlink.ClassList(link, htb.Parent)
+		if err != nil {
+			return fmt.Errorf("Unable to list classes bound to htb qdisc for device %s. Details %s",
+				link.Attrs().Name, err)
+		}
+		if len(classes) != 2 {
+			return fmt.Errorf("Number of htb classes does not match for device %s (%d != 2)",
+				link.Attrs().Name, len(classes))
+		}
+
+		for _, c := range classes {
+			htbClass, isHtb := c.(*netlink.HtbClass)
+			if !isHtb {
+				return fmt.Errorf("Unexpected class for parent htb qdisc bound to device %s", link.Attrs().Name)
+			}
+			if htbClass.Handle == htb.Defcls {
+				if htbClass.Rate != rateInBytes {
+					return fmt.Errorf("Rate does not match for the default class for device %s (%d != %d)",
+						link.Attrs().Name, htbClass.Rate, rateInBytes)
+				}
+
+				if htbClass.Buffer != bufferInBytes {
+					return fmt.Errorf("Burst buffer size does not match for the default class for device %s (%d != %d)",
+						link.Attrs().Name, htbClass.Buffer, bufferInBytes)
+				}
+			} else if htbClass.Handle == netlink.MakeHandle(1, 1) {
+				if htbClass.Rate != UncappedRate {
+					return fmt.Errorf("Rate does not match for the uncapped class for device %s (%d != %d)",
+						link.Attrs().Name, htbClass.Rate, UncappedRate)
+				}
+			}
+		}
+
+		// TODO: check non shaped subnet filters
+		// if bandwidth.NonShapedSubnets {
+		// 	filters, err := netlink.FilterList(link, htb.Parent)
+		// }
+	}
+
+	return nil
 }
