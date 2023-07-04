@@ -213,15 +213,17 @@ func createHTB(rateInBits, burstInBits uint64, linkIndex int, excludeSubnets []s
 		}
 
 		isIpv4 := nw.IP.To4() != nil
-		protocol := syscall.ETH_P_IPV6
+		// protocol := syscall.ETH_P_IPV6
 		var offset int32 = 24
 		keepBytes := 16
 		if isIpv4 {
-			protocol = syscall.ETH_P_IP
+			// protocol = syscall.ETH_P_IP
 			offset = 16
 			keepBytes = 4
 
 		}
+
+		protocol := syscall.ETH_P_ALL
 
 		if len(maskBytes) < keepBytes {
 			return fmt.Errorf("error with net lib, unexpected count of bytes for ipv4 mask (%d < %d)",
@@ -235,7 +237,7 @@ func createHTB(rateInBits, burstInBits uint64, linkIndex int, excludeSubnets []s
 		subnetBytes = subnetBytes[len(subnetBytes)-keepBytes:]
 
 		// For ipv4 we should have at most 1 key, for ipv6 at most 4
-		keys := make([]netlink.TcU32Key, 0)
+		keys := make([]netlink.TcU32Key, 0, 4)
 
 		for i := 0; i < len(maskBytes); i += 4 {
 			var mask, subnetI uint32
@@ -265,6 +267,17 @@ func createHTB(rateInBits, burstInBits uint64, linkIndex int, excludeSubnets []s
 			offset += 4
 		}
 
+		if len(keys) != cap(keys) {
+			// We need to shrink the keys capacity down to its length if we do not want additional "matchall" rules to be set in the filter
+			// Shrinking a slice down to its length seems a bit complicated...
+			// Nvm, may be I just do not have the correct way to do it :)
+			shrinkedKeys := make([]netlink.TcU32Key, len(keys), len(keys))
+			for i := 0; i < len(keys); i++ {
+				shrinkedKeys[i] = keys[i]
+			}
+			keys = shrinkedKeys
+		}
+
 		if isIpv4 && len(keys) > 1 {
 			return fmt.Errorf("error, htb ipv4 filter, unexpected rule length (%d > 1), for subnet %s",
 				len(keys), subnet)
@@ -277,7 +290,7 @@ func createHTB(rateInBits, burstInBits uint64, linkIndex int, excludeSubnets []s
 		var selector *netlink.TcU32Sel
 		if len(keys) > 0 {
 			selector = &netlink.TcU32Sel{
-				// Nkeys: uint8(len(keys)),
+				Nkeys: uint8(len(keys)),
 				Flags: netlink.TC_U32_TERMINAL,
 				Keys:  keys,
 			}
