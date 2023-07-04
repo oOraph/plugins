@@ -375,7 +375,7 @@ func checkHTB(link netlink.Link, rateInBytes uint64, bufferInBytes uint32) error
 		}
 
 		foundHTB = true
-		if htb.Defcls != netlink.MakeHandle(1, 30) {
+		if htb.Defcls != DefaultClassMinorID {
 			return fmt.Errorf("Default class does not match")
 		}
 

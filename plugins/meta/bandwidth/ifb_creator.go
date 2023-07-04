@@ -28,6 +28,7 @@ import (
 
 const latencyInMillis = 25
 const UncappedRate = 100_000_000_000
+const DefaultClassMinorID = 30
 
 func CreateIfb(ifbDeviceName string, mtu int, qlen int) error {
 
@@ -135,7 +136,10 @@ func createHTB(rateInBits, burstInBits uint64, linkIndex int, excludeSubnets []s
 			Handle:    netlink.MakeHandle(1, 0),
 			Parent:    netlink.HANDLE_ROOT,
 		},
-		Defcls: netlink.MakeHandle(1, 30),
+		Defcls: DefaultClassMinorID,
+		// No idea what these are so let's keep the default values from source code...
+		Version:      3,
+		Rate2Quantum: 10,
 	}
 	err := netlink.QdiscAdd(qdisc)
 	if err != nil {
@@ -154,7 +158,7 @@ func createHTB(rateInBits, burstInBits uint64, linkIndex int, excludeSubnets []s
 	defClass := &netlink.HtbClass{
 		ClassAttrs: netlink.ClassAttrs{
 			LinkIndex: linkIndex,
-			Handle:    netlink.MakeHandle(1, 30),
+			Handle:    netlink.MakeHandle(1, DefaultClassMinorID),
 			Parent:    netlink.MakeHandle(1, 0),
 		},
 		Rate:   rateInBytes,
