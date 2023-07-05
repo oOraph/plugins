@@ -381,7 +381,7 @@ func checkHTB(link netlink.Link, rateInBytes uint64, bufferInBytes uint32) error
 			return fmt.Errorf("Default class does not match")
 		}
 
-		classes, err := netlink.ClassList(link, htb.Parent)
+		classes, err := netlink.ClassList(link, htb.Handle)
 		if err != nil {
 			return fmt.Errorf("Unable to list classes bound to htb qdisc for device %s. Details %s",
 				link.Attrs().Name, err)
