@@ -15,16 +15,21 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math"
 	"net"
+	"os"
 	"syscall"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/gexec"
 	"github.com/vishvananda/netlink"
 
+	"github.com/containernetworking/cni/pkg/invoke"
 	"github.com/containernetworking/cni/pkg/skel"
 	"github.com/containernetworking/cni/pkg/types"
 	types100 "github.com/containernetworking/cni/pkg/types/100"
@@ -1566,6 +1571,7 @@ var _ = Describe("bandwidth test", func() {
 					return nil
 				})).To(Succeed())
 			})
+
 			It(fmt.Sprintf("[%s] should fail when preResult has no interfaces", ver), func() {
 				conf := fmt.Sprintf(`{
 					"cniVersion": "%s",
@@ -1652,200 +1658,201 @@ var _ = Describe("bandwidth test", func() {
 			})
 		})
 
+		Context(fmt.Sprintf("[%s] when chaining bandwidth plugin with PTP", ver), func() {
+			var ptpConf string
+			var rateInBits uint64
+			var burstInBits uint64
+			var packetInBytes int
+			var containerWithoutQoSNS ns.NetNS
+			var containerWithQoSNS ns.NetNS
+			var portServerWithQoS int
+			var portServerWithoutQoS int
+
+			var containerWithQoSRes types.Result
+			var containerWithoutQoSRes types.Result
+			var echoServerWithQoS *gexec.Session
+			var echoServerWithoutQoS *gexec.Session
+			var dataDir string
+
+			BeforeEach(func() {
+				rateInBytes := 1000
+				rateInBits = uint64(rateInBytes * 8)
+				burstInBits = rateInBits * 2
+				packetInBytes = rateInBytes * 25
+
+				var err error
+				dataDir, err = os.MkdirTemp("", "bandwidth_linux_test")
+				Expect(err).NotTo(HaveOccurred())
+
+				ptpConf = fmt.Sprintf(`{
+				    "cniVersion": "%s",
+				    "name": "myBWnet",
+				    "type": "ptp",
+				    "ipMasq": true,
+				    "mtu": 512,
+				    "ipam": {
+					"type": "host-local",
+					"subnet": "10.1.2.0/24",
+					"dataDir": "%s"
+				    }
+				}`, ver, dataDir)
+
+				const (
+					containerWithQoSIFName    = "ptp0"
+					containerWithoutQoSIFName = "ptp1"
+				)
+
+				containerWithQoSNS, err = testutils.NewNS()
+				Expect(err).NotTo(HaveOccurred())
+
+				containerWithoutQoSNS, err = testutils.NewNS()
+				Expect(err).NotTo(HaveOccurred())
+
+				By("create two containers, and use the bandwidth plugin on one of them")
+				Expect(hostNs.Do(func(ns.NetNS) error {
+					defer GinkgoRecover()
+
+					containerWithQoSRes, _, err = testutils.CmdAdd(containerWithQoSNS.Path(), "dummy", containerWithQoSIFName, []byte(ptpConf), func() error {
+						r, err := invoke.DelegateAdd(context.TODO(), "ptp", []byte(ptpConf), nil)
+						Expect(err).NotTo(HaveOccurred())
+						Expect(r.Print()).To(Succeed())
+
+						return err
+					})
+					Expect(err).NotTo(HaveOccurred())
+
+					containerWithoutQoSRes, _, err = testutils.CmdAdd(containerWithoutQoSNS.Path(), "dummy2", containerWithoutQoSIFName, []byte(ptpConf), func() error {
+						r, err := invoke.DelegateAdd(context.TODO(), "ptp", []byte(ptpConf), nil)
+						Expect(err).NotTo(HaveOccurred())
+						Expect(r.Print()).To(Succeed())
+
+						return err
+					})
+					Expect(err).NotTo(HaveOccurred())
+
+					containerWithQoSResult, err := types100.GetResult(containerWithQoSRes)
+					Expect(err).NotTo(HaveOccurred())
+
+					bandwidthPluginConf := &PluginConf{}
+					err = json.Unmarshal([]byte(ptpConf), &bandwidthPluginConf)
+					Expect(err).NotTo(HaveOccurred())
+
+					bandwidthPluginConf.RuntimeConfig.Bandwidth = &BandwidthEntry{
+						IngressBurst: burstInBits,
+						IngressRate:  rateInBits,
+						EgressBurst:  burstInBits,
+						EgressRate:   rateInBits,
+					}
+					bandwidthPluginConf.Type = "bandwidth"
+					newConfBytes, err := buildOneConfig("myBWnet", ver, bandwidthPluginConf, containerWithQoSResult)
+					Expect(err).NotTo(HaveOccurred())
+
+					args := &skel.CmdArgs{
+						ContainerID: "dummy3",
+						Netns:       containerWithQoSNS.Path(),
+						IfName:      containerWithQoSIFName,
+						StdinData:   newConfBytes,
+					}
+
+					result, out, err := testutils.CmdAdd(containerWithQoSNS.Path(), args.ContainerID, "", newConfBytes, func() error { return cmdAdd(args) })
+					Expect(err).NotTo(HaveOccurred(), string(out))
+
+					if testutils.SpecVersionHasCHECK(ver) {
+						// Do CNI Check
+						checkConf := &PluginConf{}
+						err = json.Unmarshal([]byte(ptpConf), &checkConf)
+						Expect(err).NotTo(HaveOccurred())
+
+						checkConf.RuntimeConfig.Bandwidth = &BandwidthEntry{
+							IngressBurst: burstInBits,
+							IngressRate:  rateInBits,
+							EgressBurst:  burstInBits,
+							EgressRate:   rateInBits,
+						}
+						checkConf.Type = "bandwidth"
+
+						newCheckBytes, err := buildOneConfig("myBWnet", ver, checkConf, result)
+						Expect(err).NotTo(HaveOccurred())
+
+						args = &skel.CmdArgs{
+							ContainerID: "dummy3",
+							Netns:       containerWithQoSNS.Path(),
+							IfName:      containerWithQoSIFName,
+							StdinData:   newCheckBytes,
+						}
+
+						err = testutils.CmdCheck(containerWithQoSNS.Path(), args.ContainerID, "", func() error { return cmdCheck(args) })
+						Expect(err).NotTo(HaveOccurred())
+					}
+
+					return nil
+				})).To(Succeed())
+
+				By("starting a tcp server on both containers")
+				portServerWithQoS, echoServerWithQoS = startEchoServerInNamespace(containerWithQoSNS)
+				portServerWithoutQoS, echoServerWithoutQoS = startEchoServerInNamespace(containerWithoutQoSNS)
+			})
+
+			AfterEach(func() {
+				Expect(os.RemoveAll(dataDir)).To(Succeed())
+
+				Expect(containerWithQoSNS.Close()).To(Succeed())
+				Expect(testutils.UnmountNS(containerWithQoSNS)).To(Succeed())
+				Expect(containerWithoutQoSNS.Close()).To(Succeed())
+				Expect(testutils.UnmountNS(containerWithoutQoSNS)).To(Succeed())
+
+				if echoServerWithoutQoS != nil {
+					echoServerWithoutQoS.Kill()
+				}
+				if echoServerWithQoS != nil {
+					echoServerWithQoS.Kill()
+				}
+			})
+
+			// FIXME: Deprecated and not run by ginkgo
+			// https://onsi.github.io/ginkgo/MIGRATING_TO_V2#removed-measure
+			Measure("limits ingress traffic on veth device", func(b Benchmarker) {
+				var runtimeWithLimit time.Duration
+				var runtimeWithoutLimit time.Duration
+
+				By("gather timing statistics about both containers")
+				By("sending tcp traffic to the container that has traffic shaped", func() {
+					runtimeWithLimit = b.Time("with qos", func() {
+						result, err := types100.GetResult(containerWithQoSRes)
+						Expect(err).NotTo(HaveOccurred())
+
+						makeTCPClientInNS(hostNs.Path(), result.IPs[0].Address.IP.String(), portServerWithQoS, packetInBytes)
+					})
+				})
+
+				By("sending tcp traffic to the container that does not have traffic shaped", func() {
+					runtimeWithoutLimit = b.Time("without qos", func() {
+						result, err := types100.GetResult(containerWithoutQoSRes)
+						Expect(err).NotTo(HaveOccurred())
+
+						makeTCPClientInNS(hostNs.Path(), result.IPs[0].Address.IP.String(), portServerWithoutQoS, packetInBytes)
+					})
+				})
+
+				Expect(runtimeWithLimit).To(BeNumerically(">", runtimeWithoutLimit+1000*time.Millisecond))
+			}, 1)
+		})
+
 	}
+
+	Describe("Validating input", func() {
+		It("Should allow only 4GB burst rate", func() {
+			err := validateRateAndBurst(5000, 4*1024*1024*1024*8-16) // 2 bytes less than the max should pass
+			Expect(err).NotTo(HaveOccurred())
+			err = validateRateAndBurst(5000, 4*1024*1024*1024*8) // we're 1 bit above MaxUint32
+			Expect(err).To(HaveOccurred())
+			err = validateRateAndBurst(0, 1)
+			Expect(err).To(HaveOccurred())
+			err = validateRateAndBurst(1, 0)
+			Expect(err).To(HaveOccurred())
+			err = validateRateAndBurst(0, 0)
+			Expect(err).NotTo(HaveOccurred())
+		})
+	})
+
 })
-
-// 		Context(fmt.Sprintf("[%s] when chaining bandwidth plugin with PTP", ver), func() {
-// 			var ptpConf string
-// 			var rateInBits uint64
-// 			var burstInBits uint64
-// 			var packetInBytes int
-// 			var containerWithoutTbfNS ns.NetNS
-// 			var containerWithTbfNS ns.NetNS
-// 			var portServerWithTbf int
-// 			var portServerWithoutTbf int
-
-// 			var containerWithTbfRes types.Result
-// 			var containerWithoutTbfRes types.Result
-// 			var echoServerWithTbf *gexec.Session
-// 			var echoServerWithoutTbf *gexec.Session
-// 			var dataDir string
-
-// 			BeforeEach(func() {
-// 				rateInBytes := 1000
-// 				rateInBits = uint64(rateInBytes * 8)
-// 				burstInBits = rateInBits * 2
-// 				packetInBytes = rateInBytes * 25
-
-// 				var err error
-// 				dataDir, err = os.MkdirTemp("", "bandwidth_linux_test")
-// 				Expect(err).NotTo(HaveOccurred())
-
-// 				ptpConf = fmt.Sprintf(`{
-// 				    "cniVersion": "%s",
-// 				    "name": "myBWnet",
-// 				    "type": "ptp",
-// 				    "ipMasq": true,
-// 				    "mtu": 512,
-// 				    "ipam": {
-// 					"type": "host-local",
-// 					"subnet": "10.1.2.0/24",
-// 					"dataDir": "%s"
-// 				    }
-// 				}`, ver, dataDir)
-
-// 				const (
-// 					containerWithTbfIFName    = "ptp0"
-// 					containerWithoutTbfIFName = "ptp1"
-// 				)
-
-// 				containerWithTbfNS, err = testutils.NewNS()
-// 				Expect(err).NotTo(HaveOccurred())
-
-// 				containerWithoutTbfNS, err = testutils.NewNS()
-// 				Expect(err).NotTo(HaveOccurred())
-
-// 				By("create two containers, and use the bandwidth plugin on one of them")
-// 				Expect(hostNs.Do(func(ns.NetNS) error {
-// 					defer GinkgoRecover()
-
-// 					containerWithTbfRes, _, err = testutils.CmdAdd(containerWithTbfNS.Path(), "dummy", containerWithTbfIFName, []byte(ptpConf), func() error {
-// 						r, err := invoke.DelegateAdd(context.TODO(), "ptp", []byte(ptpConf), nil)
-// 						Expect(err).NotTo(HaveOccurred())
-// 						Expect(r.Print()).To(Succeed())
-
-// 						return err
-// 					})
-// 					Expect(err).NotTo(HaveOccurred())
-
-// 					containerWithoutTbfRes, _, err = testutils.CmdAdd(containerWithoutTbfNS.Path(), "dummy2", containerWithoutTbfIFName, []byte(ptpConf), func() error {
-// 						r, err := invoke.DelegateAdd(context.TODO(), "ptp", []byte(ptpConf), nil)
-// 						Expect(err).NotTo(HaveOccurred())
-// 						Expect(r.Print()).To(Succeed())
-
-// 						return err
-// 					})
-// 					Expect(err).NotTo(HaveOccurred())
-
-// 					containerWithTbfResult, err := types100.GetResult(containerWithTbfRes)
-// 					Expect(err).NotTo(HaveOccurred())
-
-// 					tbfPluginConf := &PluginConf{}
-// 					err = json.Unmarshal([]byte(ptpConf), &tbfPluginConf)
-// 					Expect(err).NotTo(HaveOccurred())
-
-// 					tbfPluginConf.RuntimeConfig.Bandwidth = &BandwidthEntry{
-// 						IngressBurst: burstInBits,
-// 						IngressRate:  rateInBits,
-// 						EgressBurst:  burstInBits,
-// 						EgressRate:   rateInBits,
-// 					}
-// 					tbfPluginConf.Type = "bandwidth"
-// 					newConfBytes, err := buildOneConfig("myBWnet", ver, tbfPluginConf, containerWithTbfResult)
-// 					Expect(err).NotTo(HaveOccurred())
-
-// 					args := &skel.CmdArgs{
-// 						ContainerID: "dummy3",
-// 						Netns:       containerWithTbfNS.Path(),
-// 						IfName:      containerWithTbfIFName,
-// 						StdinData:   newConfBytes,
-// 					}
-
-// 					result, out, err := testutils.CmdAdd(containerWithTbfNS.Path(), args.ContainerID, "", newConfBytes, func() error { return cmdAdd(args) })
-// 					Expect(err).NotTo(HaveOccurred(), string(out))
-
-// 					if testutils.SpecVersionHasCHECK(ver) {
-// 						// Do CNI Check
-// 						checkConf := &PluginConf{}
-// 						err = json.Unmarshal([]byte(ptpConf), &checkConf)
-// 						Expect(err).NotTo(HaveOccurred())
-
-// 						checkConf.RuntimeConfig.Bandwidth = &BandwidthEntry{
-// 							IngressBurst: burstInBits,
-// 							IngressRate:  rateInBits,
-// 							EgressBurst:  burstInBits,
-// 							EgressRate:   rateInBits,
-// 						}
-// 						checkConf.Type = "bandwidth"
-
-// 						newCheckBytes, err := buildOneConfig("myBWnet", ver, checkConf, result)
-// 						Expect(err).NotTo(HaveOccurred())
-
-// 						args = &skel.CmdArgs{
-// 							ContainerID: "dummy3",
-// 							Netns:       containerWithTbfNS.Path(),
-// 							IfName:      containerWithTbfIFName,
-// 							StdinData:   newCheckBytes,
-// 						}
-
-// 						err = testutils.CmdCheck(containerWithTbfNS.Path(), args.ContainerID, "", func() error { return cmdCheck(args) })
-// 						Expect(err).NotTo(HaveOccurred())
-// 					}
-
-// 					return nil
-// 				})).To(Succeed())
-
-// 				By("starting a tcp server on both containers")
-// 				portServerWithTbf, echoServerWithTbf = startEchoServerInNamespace(containerWithTbfNS)
-// 				portServerWithoutTbf, echoServerWithoutTbf = startEchoServerInNamespace(containerWithoutTbfNS)
-// 			})
-
-// 			AfterEach(func() {
-// 				Expect(os.RemoveAll(dataDir)).To(Succeed())
-
-// 				Expect(containerWithTbfNS.Close()).To(Succeed())
-// 				Expect(testutils.UnmountNS(containerWithTbfNS)).To(Succeed())
-// 				Expect(containerWithoutTbfNS.Close()).To(Succeed())
-// 				Expect(testutils.UnmountNS(containerWithoutTbfNS)).To(Succeed())
-
-// 				if echoServerWithoutTbf != nil {
-// 					echoServerWithoutTbf.Kill()
-// 				}
-// 				if echoServerWithTbf != nil {
-// 					echoServerWithTbf.Kill()
-// 				}
-// 			})
-
-// 			Measure("limits ingress traffic on veth device", func(b Benchmarker) {
-// 				var runtimeWithLimit time.Duration
-// 				var runtimeWithoutLimit time.Duration
-
-// 				By("gather timing statistics about both containers")
-// 				By("sending tcp traffic to the container that has traffic shaped", func() {
-// 					runtimeWithLimit = b.Time("with tbf", func() {
-// 						result, err := types100.GetResult(containerWithTbfRes)
-// 						Expect(err).NotTo(HaveOccurred())
-
-// 						makeTCPClientInNS(hostNs.Path(), result.IPs[0].Address.IP.String(), portServerWithTbf, packetInBytes)
-// 					})
-// 				})
-
-// 				By("sending tcp traffic to the container that does not have traffic shaped", func() {
-// 					runtimeWithoutLimit = b.Time("without tbf", func() {
-// 						result, err := types100.GetResult(containerWithoutTbfRes)
-// 						Expect(err).NotTo(HaveOccurred())
-
-// 						makeTCPClientInNS(hostNs.Path(), result.IPs[0].Address.IP.String(), portServerWithoutTbf, packetInBytes)
-// 					})
-// 				})
-
-// 				Expect(runtimeWithLimit).To(BeNumerically(">", runtimeWithoutLimit+1000*time.Millisecond))
-// 			}, 1)
-// 		})
-// 	}
-
-// 	Describe("Validating input", func() {
-// 		It("Should allow only 4GB burst rate", func() {
-// 			err := validateRateAndBurst(5000, 4*1024*1024*1024*8-16) // 2 bytes less than the max should pass
-// 			Expect(err).NotTo(HaveOccurred())
-// 			err = validateRateAndBurst(5000, 4*1024*1024*1024*8) // we're 1 bit above MaxUint32
-// 			Expect(err).To(HaveOccurred())
-// 			err = validateRateAndBurst(0, 1)
-// 			Expect(err).To(HaveOccurred())
-// 			err = validateRateAndBurst(1, 0)
-// 			Expect(err).To(HaveOccurred())
-// 			err = validateRateAndBurst(0, 0)
-// 			Expect(err).NotTo(HaveOccurred())
-// 		})
-// 	})
-// })
