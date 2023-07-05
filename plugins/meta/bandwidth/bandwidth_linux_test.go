@@ -402,6 +402,7 @@ var _ = Describe("bandwidth test", func() {
 					// match 0xfd000db8/0xffffffff at 24
 					// match 0xabcd1234/0xffffffff at 28
 					// match 0xe0000000/0xf0000000 at 32
+					// (and last match discarded because it would be equivalent to a matchall/true condition at 36)
 					Expect(filterSel.Keys[0].Off).To(Equal(int32(24)))
 					Expect(filterSel.Keys[0].Val).To(Equal(uint32(4244639160)))
 					Expect(filterSel.Keys[0].Mask).To(Equal(uint32(4294967295)))
@@ -508,6 +509,7 @@ var _ = Describe("bandwidth test", func() {
 					// match 0xfd000db8/0xffffffff at 24
 					// match 0xabcd1234/0xffffffff at 28
 					// match 0xe0000000/0xf0000000 at 32
+					// (and last match discarded because it would be equivalent to a matchall/true condition at 36)
 					Expect(filterSel.Keys[0].Off).To(Equal(int32(24)))
 					Expect(filterSel.Keys[0].Val).To(Equal(uint32(4244639160)))
 					Expect(filterSel.Keys[0].Mask).To(Equal(uint32(4294967295)))
