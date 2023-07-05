@@ -17,7 +17,9 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"net"
+	"syscall"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -121,7 +123,7 @@ var _ = Describe("bandwidth test", func() {
 		ver := ver
 
 		Describe("cmdADD", func() {
-			It(fmt.Sprintf("[%s] works with a Veth pair wihtout any uncontrolled subnets", ver), func() {
+			It(fmt.Sprintf("[%s] works with a Veth pair wihtout any unbounded traffic", ver), func() {
 				conf := fmt.Sprintf(`{
 					"cniVersion": "%s",
 					"name": "cni-plugin-bandwidth-test",
@@ -205,7 +207,10 @@ var _ = Describe("bandwidth test", func() {
 					Expect(classes[1].(*netlink.HtbClass).Ceil).To(Equal(uint64(4)))
 					Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
 
-					// filters :=
+					// Since we do not exclude anything from egress traffic shapping, we should not find any filter
+					filters, err := netlink.FilterList(ifbLink, qdiscs[0].Attrs().Handle)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(filters).To(HaveLen(0))
 
 					hostVethLink, err := netlink.LinkByName(hostIfname)
 					Expect(err).NotTo(HaveOccurred())
@@ -256,8 +261,265 @@ var _ = Describe("bandwidth test", func() {
 					Expect(classes[1].(*netlink.HtbClass).Ceil).To(Equal(uint64(2)))
 					Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
 
-					// Expect(qdiscs[0].(*netlink.Tbf).Rate).To(Equal(uint64(1)))
-					// Expect(qdiscs[0].(*netlink.Tbf).Limit).To(Equal(uint32(1)))
+					// Since we do not exclude anything from ingress traffic shapping, we should not find any filter
+					filters, err := netlink.FilterList(ifbLink, qdiscs[0].Attrs().Handle)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(filters).To(HaveLen(0))
+					return nil
+				})).To(Succeed())
+			})
+
+			It(fmt.Sprintf("[%s] works with a Veth pair wiht some ipv4 and ipv6 unbounded traffic", ver), func() {
+				conf := fmt.Sprintf(`{
+				"cniVersion": "%s",
+				"name": "cni-plugin-bandwidth-test",
+				"type": "bandwidth",
+				"ingressRate": 8,
+				"ingressBurst": 8,
+				"egressRate": 16,
+				"egressBurst": 12,
+				"nonShapedSubnets": [
+					"10.0.0.0/8",
+					"fd00:db8:abcd:1234:e000::/68"
+				],
+				"prevResult": {
+					"interfaces": [
+						{
+							"name": "%s",
+							"sandbox": ""
+						},
+						{
+							"name": "%s",
+							"sandbox": "%s"
+						}
+					],
+					"ips": [
+						{
+							"version": "4",
+							"address": "%s/24",
+							"gateway": "10.0.0.1",
+							"interface": 1
+						}
+					],
+					"routes": []
+				}
+			}`, ver, hostIfname, containerIfname, containerNs.Path(), containerIP.String())
+
+				args := &skel.CmdArgs{
+					ContainerID: "dummy",
+					Netns:       containerNs.Path(),
+					IfName:      containerIfname,
+					StdinData:   []byte(conf),
+				}
+
+				// Container egress (host ingress)
+				Expect(hostNs.Do(func(netNS ns.NetNS) error {
+					defer GinkgoRecover()
+					r, out, err := testutils.CmdAdd(containerNs.Path(), args.ContainerID, "", []byte(conf), func() error { return cmdAdd(args) })
+					Expect(err).NotTo(HaveOccurred(), string(out))
+					result, err := types100.GetResult(r)
+					Expect(err).NotTo(HaveOccurred())
+
+					Expect(result.Interfaces).To(HaveLen(3))
+					Expect(result.Interfaces[2].Name).To(Equal(ifbDeviceName))
+					Expect(result.Interfaces[2].Sandbox).To(Equal(""))
+
+					ifbLink, err := netlink.LinkByName(ifbDeviceName)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(ifbLink.Attrs().MTU).To(Equal(hostIfaceMTU))
+
+					qdiscs, err := netlink.QdiscList(ifbLink)
+					Expect(err).NotTo(HaveOccurred())
+
+					Expect(qdiscs).To(HaveLen(1))
+					Expect(qdiscs[0].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
+
+					Expect(qdiscs[0]).To(BeAssignableToTypeOf(&netlink.Htb{}))
+
+					classes, err := netlink.ClassList(ifbLink, qdiscs[0].Attrs().Handle)
+
+					Expect(err).NotTo(HaveOccurred())
+					Expect(classes).To(HaveLen(2))
+
+					// Uncapped class
+					Expect(classes[0]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
+					Expect(classes[0].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, 1)))
+					Expect(classes[0].(*netlink.HtbClass).Rate).To(Equal(uint64(UncappedRate)))
+					Expect(classes[0].(*netlink.HtbClass).Buffer).To(Equal(uint32(0)))
+					Expect(classes[0].(*netlink.HtbClass).Ceil).To(Equal(uint64(UncappedRate)))
+					Expect(classes[0].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
+
+					// Class with traffic shapping settings
+					Expect(classes[1]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
+					Expect(classes[1].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, uint16(qdiscs[0].(*netlink.Htb).Defcls))))
+					Expect(classes[1].(*netlink.HtbClass).Rate).To(Equal(uint64(2)))
+					// Expect(classes[1].(*netlink.HtbClass).Buffer).To(Equal(uint32(7812500)))
+					Expect(classes[1].(*netlink.HtbClass).Ceil).To(Equal(uint64(4)))
+					Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
+
+					filters, err := netlink.FilterList(ifbLink, qdiscs[0].Attrs().Handle)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(filters).To(HaveLen(2))
+
+					// traffic to 10.0.0.0/8 redirected to uncapped class
+					Expect(filters[0]).To(BeAssignableToTypeOf(&netlink.U32{}))
+					Expect(filters[0].(*netlink.U32).Actions).To(HaveLen(0))
+					Expect(filters[0].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_ALL)))
+					Expect(filters[0].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
+					Expect(filters[0].Attrs().Priority).To(Equal(uint16(16)))
+					Expect(filters[0].Attrs().Parent).To(Equal(qdiscs[0].Attrs().Handle))
+					Expect(filters[0].(*netlink.U32).ClassId).To(Equal(netlink.MakeHandle(1, 1)))
+
+					filterSel := filters[0].(*netlink.U32).Sel
+					Expect(filterSel).To(BeAssignableToTypeOf(&netlink.TcU32Sel{}))
+					Expect(filterSel.Flags).To(Equal(uint8(netlink.TC_U32_TERMINAL)))
+					Expect(filterSel.Keys).To(HaveLen(1))
+					Expect(filterSel.Nkeys).To(Equal(uint8(1)))
+
+					// The filter should match to 10.0.0.0/8 dst address in other words it should be:
+					// match 0a000000/ff000000 at 16
+					selKey := filterSel.Keys[0]
+					Expect(selKey.Val).To(Equal(uint32(10 * math.Pow(256, 3))))
+					Expect(selKey.Off).To(Equal(int32(16)))
+					Expect(selKey.Mask).To(Equal(uint32(255 * math.Pow(256, 3))))
+
+					// traffic to fd00:db8:abcd:1234:e000::/68 redirected to uncapped class
+					Expect(filters[1]).To(BeAssignableToTypeOf(&netlink.U32{}))
+					Expect(filters[1].(*netlink.U32).Actions).To(HaveLen(0))
+					Expect(filters[1].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_ALL)))
+					Expect(filters[1].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
+					Expect(filters[1].Attrs().Priority).To(Equal(uint16(16)))
+					Expect(filters[1].Attrs().Parent).To(Equal(qdiscs[0].Attrs().Handle))
+					Expect(filters[1].(*netlink.U32).ClassId).To(Equal(netlink.MakeHandle(1, 1)))
+
+					filterSel = filters[1].(*netlink.U32).Sel
+					Expect(filterSel).To(BeAssignableToTypeOf(&netlink.TcU32Sel{}))
+					Expect(filterSel.Flags).To(Equal(uint8(netlink.TC_U32_TERMINAL)))
+					Expect(filterSel.Keys).To(HaveLen(3))
+					Expect(filterSel.Nkeys).To(Equal(uint8(3)))
+
+					// The filter should match to fd00:db8:abcd:1234:e000::/68 dst address in other words it should be:
+					// match 0xfd000db8/0xffffffff at 24
+					// match 0xabcd1234/0xffffffff at 28
+					// match 0xe0000000/0xf0000000 at 32
+					Expect(filterSel.Keys[0].Off).To(Equal(int32(24)))
+					Expect(filterSel.Keys[0].Val).To(Equal(uint32(4244639160)))
+					Expect(filterSel.Keys[0].Mask).To(Equal(uint32(4294967295)))
+
+					Expect(filterSel.Keys[1].Off).To(Equal(int32(28)))
+					Expect(filterSel.Keys[1].Val).To(Equal(uint32(2882343476)))
+					Expect(filterSel.Keys[1].Mask).To(Equal(uint32(4294967295)))
+
+					Expect(filterSel.Keys[2].Off).To(Equal(int32(32)))
+					Expect(filterSel.Keys[2].Val).To(Equal(uint32(3758096384)))
+					Expect(filterSel.Keys[2].Mask).To(Equal(uint32(4026531840)))
+
+					hostVethLink, err := netlink.LinkByName(hostIfname)
+					Expect(err).NotTo(HaveOccurred())
+
+					qdiscFilters, err := netlink.FilterList(hostVethLink, netlink.MakeHandle(0xffff, 0))
+					Expect(err).NotTo(HaveOccurred())
+
+					Expect(qdiscFilters).To(HaveLen(1))
+					Expect(qdiscFilters[0].(*netlink.U32).Actions[0].(*netlink.MirredAction).Ifindex).To(Equal(ifbLink.Attrs().Index))
+
+					return nil
+				})).To(Succeed())
+
+				// Container ingress (host egress)
+				Expect(hostNs.Do(func(n ns.NetNS) error {
+					defer GinkgoRecover()
+
+					ifbLink, err := netlink.LinkByName(hostIfname)
+					Expect(err).NotTo(HaveOccurred())
+
+					qdiscs, err := netlink.QdiscList(ifbLink)
+					Expect(err).NotTo(HaveOccurred())
+
+					Expect(qdiscs).To(HaveLen(2))
+					Expect(qdiscs[0].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
+
+					Expect(qdiscs[0]).To(BeAssignableToTypeOf(&netlink.Htb{}))
+					Expect(qdiscs[0].(*netlink.Htb).Defcls).To(Equal(uint32(48)))
+
+					classes, err := netlink.ClassList(ifbLink, qdiscs[0].Attrs().Handle)
+
+					Expect(err).NotTo(HaveOccurred())
+					Expect(classes).To(HaveLen(2))
+
+					// Uncapped class
+					Expect(classes[0]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
+					Expect(classes[0].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, 1)))
+					Expect(classes[0].(*netlink.HtbClass).Rate).To(Equal(uint64(UncappedRate)))
+					Expect(classes[0].(*netlink.HtbClass).Buffer).To(Equal(uint32(0)))
+					Expect(classes[0].(*netlink.HtbClass).Ceil).To(Equal(uint64(UncappedRate)))
+					Expect(classes[0].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
+
+					// Class with traffic shapping settings
+					Expect(classes[1]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
+					Expect(classes[1].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, uint16(qdiscs[0].(*netlink.Htb).Defcls))))
+					Expect(classes[1].(*netlink.HtbClass).Rate).To(Equal(uint64(1)))
+					// Expect(classes[1].(*netlink.HtbClass).Buffer).To(Equal(uint32(15625000)))
+					Expect(classes[1].(*netlink.HtbClass).Ceil).To(Equal(uint64(2)))
+					Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
+
+					filters, err := netlink.FilterList(ifbLink, qdiscs[0].Attrs().Handle)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(filters).To(HaveLen(2))
+
+					// traffic to 10.0.0.0/8 redirected to uncapped class
+					Expect(filters[0]).To(BeAssignableToTypeOf(&netlink.U32{}))
+					Expect(filters[0].(*netlink.U32).Actions).To(HaveLen(0))
+					Expect(filters[0].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_ALL)))
+					Expect(filters[0].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
+					Expect(filters[0].Attrs().Priority).To(Equal(uint16(16)))
+					Expect(filters[0].Attrs().Parent).To(Equal(qdiscs[0].Attrs().Handle))
+					Expect(filters[0].(*netlink.U32).ClassId).To(Equal(netlink.MakeHandle(1, 1)))
+
+					filterSel := filters[0].(*netlink.U32).Sel
+					Expect(filterSel).To(BeAssignableToTypeOf(&netlink.TcU32Sel{}))
+					Expect(filterSel.Flags).To(Equal(uint8(netlink.TC_U32_TERMINAL)))
+					Expect(filterSel.Keys).To(HaveLen(1))
+					Expect(filterSel.Nkeys).To(Equal(uint8(1)))
+
+					// The filter should match to 10.0.0.0/8 dst address in other words it should be:
+					// match 0a000000/ff000000 at 16
+					selKey := filterSel.Keys[0]
+					Expect(selKey.Val).To(Equal(uint32(10 * math.Pow(256, 3))))
+					Expect(selKey.Off).To(Equal(int32(16)))
+					Expect(selKey.Mask).To(Equal(uint32(255 * math.Pow(256, 3))))
+
+					// traffic to fd00:db8:abcd:1234:e000::/68 redirected to uncapped class
+					Expect(filters[1]).To(BeAssignableToTypeOf(&netlink.U32{}))
+					Expect(filters[1].(*netlink.U32).Actions).To(HaveLen(0))
+					Expect(filters[1].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_ALL)))
+					Expect(filters[1].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
+					Expect(filters[1].Attrs().Priority).To(Equal(uint16(16)))
+					Expect(filters[1].Attrs().Parent).To(Equal(qdiscs[0].Attrs().Handle))
+					Expect(filters[1].(*netlink.U32).ClassId).To(Equal(netlink.MakeHandle(1, 1)))
+
+					filterSel = filters[1].(*netlink.U32).Sel
+					Expect(filterSel).To(BeAssignableToTypeOf(&netlink.TcU32Sel{}))
+					Expect(filterSel.Flags).To(Equal(uint8(netlink.TC_U32_TERMINAL)))
+					Expect(filterSel.Keys).To(HaveLen(3))
+					Expect(filterSel.Nkeys).To(Equal(uint8(3)))
+
+					// The filter should match to fd00:db8:abcd:1234:e000::/68 dst address in other words it should be:
+					// match 0xfd000db8/0xffffffff at 24
+					// match 0xabcd1234/0xffffffff at 28
+					// match 0xe0000000/0xf0000000 at 32
+					Expect(filterSel.Keys[0].Off).To(Equal(int32(24)))
+					Expect(filterSel.Keys[0].Val).To(Equal(uint32(4244639160)))
+					Expect(filterSel.Keys[0].Mask).To(Equal(uint32(4294967295)))
+
+					Expect(filterSel.Keys[1].Off).To(Equal(int32(28)))
+					Expect(filterSel.Keys[1].Val).To(Equal(uint32(2882343476)))
+					Expect(filterSel.Keys[1].Mask).To(Equal(uint32(4294967295)))
+
+					Expect(filterSel.Keys[2].Off).To(Equal(int32(32)))
+					Expect(filterSel.Keys[2].Val).To(Equal(uint32(3758096384)))
+					Expect(filterSel.Keys[2].Mask).To(Equal(uint32(4026531840)))
+
 					return nil
 				})).To(Succeed())
 			})
