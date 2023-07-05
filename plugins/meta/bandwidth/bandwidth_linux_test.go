@@ -1362,6 +1362,79 @@ var _ = Describe("bandwidth test", func() {
 			})
 		})
 
+		Describe("cmdCHECK", func() {
+			It(fmt.Sprintf("[%s] works with a Veth pair", ver), func() {
+				conf := fmt.Sprintf(`{
+					"cniVersion": "%s",
+					"name": "cni-plugin-bandwidth-test",
+					"type": "bandwidth",
+					"ingressRate": 8,
+					"ingressBurst": 8,
+					"egressRate": 9,
+					"egressBurst": 9,
+					"prevResult": {
+						"interfaces": [
+							{
+								"name": "%s",
+								"sandbox": ""
+							},
+							{
+								"name": "%s",
+								"sandbox": "%s"
+							}
+						],
+						"ips": [
+							{
+								"version": "4",
+								"address": "%s/24",
+								"gateway": "10.0.0.1",
+								"interface": 1
+							}
+						],
+						"routes": []
+					}
+				}`, ver, hostIfname, containerIfname, containerNs.Path(), containerIP.String())
+
+				args := &skel.CmdArgs{
+					ContainerID: "dummy",
+					Netns:       containerNs.Path(),
+					IfName:      containerIfname,
+					StdinData:   []byte(conf),
+				}
+
+				Expect(hostNs.Do(func(netNS ns.NetNS) error {
+					defer GinkgoRecover()
+					_, out, err := testutils.CmdAdd(containerNs.Path(), args.ContainerID, "", []byte(conf), func() error { return cmdAdd(args) })
+					Expect(err).NotTo(HaveOccurred(), string(out))
+
+					_, err = netlink.LinkByName(hostIfname)
+					Expect(err).NotTo(HaveOccurred())
+
+					_, err = netlink.LinkByName(ifbDeviceName)
+					Expect(err).NotTo(HaveOccurred())
+
+					if testutils.SpecVersionHasCHECK(ver) {
+						// Do CNI Check
+
+						err = testutils.CmdCheck(containerNs.Path(), args.ContainerID, "", func() error { return cmdCheck(args) })
+						Expect(err).NotTo(HaveOccurred())
+					}
+
+					err = testutils.CmdDel(containerNs.Path(), args.ContainerID, "", func() error { return cmdDel(args) })
+					Expect(err).NotTo(HaveOccurred(), string(out))
+
+					_, err = netlink.LinkByName(ifbDeviceName)
+					Expect(err).To(HaveOccurred())
+
+					// The host veth peer should remain as it has not be created by this plugin
+					_, err = netlink.LinkByName(hostIfname)
+					Expect(err).NotTo(HaveOccurred())
+
+					return nil
+				})).To(Succeed())
+			})
+		})
+
 		Describe("Getting the host interface which plugin should work on from veth peer of container interface", func() {
 			It(fmt.Sprintf("[%s] should work with multiple host veth interfaces", ver), func() {
 				// create veth peer in host ns
@@ -1658,187 +1731,190 @@ var _ = Describe("bandwidth test", func() {
 			})
 		})
 
-		Context(fmt.Sprintf("[%s] when chaining bandwidth plugin with PTP", ver), func() {
-			var ptpConf string
-			var rateInBits uint64
-			var burstInBits uint64
-			var packetInBytes int
-			var containerWithoutQoSNS ns.NetNS
-			var containerWithQoSNS ns.NetNS
-			var portServerWithQoS int
-			var portServerWithoutQoS int
+		// FIXME: all this is not run anymore... And it's the most important test in the file as it validates QoS is effective...
+		Describe(fmt.Sprintf("[%s] QoS effective", ver), func() {
 
-			var containerWithQoSRes types.Result
-			var containerWithoutQoSRes types.Result
-			var echoServerWithQoS *gexec.Session
-			var echoServerWithoutQoS *gexec.Session
-			var dataDir string
+			Context(fmt.Sprintf("[%s] when chaining bandwidth plugin with PTP", ver), func() {
+				var ptpConf string
+				var rateInBits uint64
+				var burstInBits uint64
+				var packetInBytes int
+				var containerWithoutQoSNS ns.NetNS
+				var containerWithQoSNS ns.NetNS
+				var portServerWithQoS int
+				var portServerWithoutQoS int
 
-			BeforeEach(func() {
-				rateInBytes := 1000
-				rateInBits = uint64(rateInBytes * 8)
-				burstInBits = rateInBits * 2
-				packetInBytes = rateInBytes * 25
+				var containerWithQoSRes types.Result
+				var containerWithoutQoSRes types.Result
+				var echoServerWithQoS *gexec.Session
+				var echoServerWithoutQoS *gexec.Session
+				var dataDir string
 
-				var err error
-				dataDir, err = os.MkdirTemp("", "bandwidth_linux_test")
-				Expect(err).NotTo(HaveOccurred())
+				BeforeEach(func() {
+					rateInBytes := 1000
+					rateInBits = uint64(rateInBytes * 8)
+					burstInBits = rateInBits * 2
+					packetInBytes = rateInBytes * 25
 
-				ptpConf = fmt.Sprintf(`{
-				    "cniVersion": "%s",
-				    "name": "myBWnet",
-				    "type": "ptp",
-				    "ipMasq": true,
-				    "mtu": 512,
-				    "ipam": {
-					"type": "host-local",
-					"subnet": "10.1.2.0/24",
-					"dataDir": "%s"
-				    }
-				}`, ver, dataDir)
-
-				const (
-					containerWithQoSIFName    = "ptp0"
-					containerWithoutQoSIFName = "ptp1"
-				)
-
-				containerWithQoSNS, err = testutils.NewNS()
-				Expect(err).NotTo(HaveOccurred())
-
-				containerWithoutQoSNS, err = testutils.NewNS()
-				Expect(err).NotTo(HaveOccurred())
-
-				By("create two containers, and use the bandwidth plugin on one of them")
-				Expect(hostNs.Do(func(ns.NetNS) error {
-					defer GinkgoRecover()
-
-					containerWithQoSRes, _, err = testutils.CmdAdd(containerWithQoSNS.Path(), "dummy", containerWithQoSIFName, []byte(ptpConf), func() error {
-						r, err := invoke.DelegateAdd(context.TODO(), "ptp", []byte(ptpConf), nil)
-						Expect(err).NotTo(HaveOccurred())
-						Expect(r.Print()).To(Succeed())
-
-						return err
-					})
+					var err error
+					dataDir, err = os.MkdirTemp("", "bandwidth_linux_test")
 					Expect(err).NotTo(HaveOccurred())
 
-					containerWithoutQoSRes, _, err = testutils.CmdAdd(containerWithoutQoSNS.Path(), "dummy2", containerWithoutQoSIFName, []byte(ptpConf), func() error {
-						r, err := invoke.DelegateAdd(context.TODO(), "ptp", []byte(ptpConf), nil)
-						Expect(err).NotTo(HaveOccurred())
-						Expect(r.Print()).To(Succeed())
+					ptpConf = fmt.Sprintf(`{
+						"cniVersion": "%s",
+						"name": "myBWnet",
+						"type": "ptp",
+						"ipMasq": true,
+						"mtu": 512,
+						"ipam": {
+						"type": "host-local",
+						"subnet": "10.1.2.0/24",
+						"dataDir": "%s"
+						}
+					}`, ver, dataDir)
 
-						return err
-					})
+					const (
+						containerWithQoSIFName    = "ptp0"
+						containerWithoutQoSIFName = "ptp1"
+					)
+
+					containerWithQoSNS, err = testutils.NewNS()
 					Expect(err).NotTo(HaveOccurred())
 
-					containerWithQoSResult, err := types100.GetResult(containerWithQoSRes)
+					containerWithoutQoSNS, err = testutils.NewNS()
 					Expect(err).NotTo(HaveOccurred())
 
-					bandwidthPluginConf := &PluginConf{}
-					err = json.Unmarshal([]byte(ptpConf), &bandwidthPluginConf)
-					Expect(err).NotTo(HaveOccurred())
+					By("create two containers, and use the bandwidth plugin on one of them")
+					Expect(hostNs.Do(func(ns.NetNS) error {
+						defer GinkgoRecover()
 
-					bandwidthPluginConf.RuntimeConfig.Bandwidth = &BandwidthEntry{
-						IngressBurst: burstInBits,
-						IngressRate:  rateInBits,
-						EgressBurst:  burstInBits,
-						EgressRate:   rateInBits,
-					}
-					bandwidthPluginConf.Type = "bandwidth"
-					newConfBytes, err := buildOneConfig("myBWnet", ver, bandwidthPluginConf, containerWithQoSResult)
-					Expect(err).NotTo(HaveOccurred())
+						containerWithQoSRes, _, err = testutils.CmdAdd(containerWithQoSNS.Path(), "dummy", containerWithQoSIFName, []byte(ptpConf), func() error {
+							r, err := invoke.DelegateAdd(context.TODO(), "ptp", []byte(ptpConf), nil)
+							Expect(err).NotTo(HaveOccurred())
+							Expect(r.Print()).To(Succeed())
 
-					args := &skel.CmdArgs{
-						ContainerID: "dummy3",
-						Netns:       containerWithQoSNS.Path(),
-						IfName:      containerWithQoSIFName,
-						StdinData:   newConfBytes,
-					}
-
-					result, out, err := testutils.CmdAdd(containerWithQoSNS.Path(), args.ContainerID, "", newConfBytes, func() error { return cmdAdd(args) })
-					Expect(err).NotTo(HaveOccurred(), string(out))
-
-					if testutils.SpecVersionHasCHECK(ver) {
-						// Do CNI Check
-						checkConf := &PluginConf{}
-						err = json.Unmarshal([]byte(ptpConf), &checkConf)
+							return err
+						})
 						Expect(err).NotTo(HaveOccurred())
 
-						checkConf.RuntimeConfig.Bandwidth = &BandwidthEntry{
+						containerWithoutQoSRes, _, err = testutils.CmdAdd(containerWithoutQoSNS.Path(), "dummy2", containerWithoutQoSIFName, []byte(ptpConf), func() error {
+							r, err := invoke.DelegateAdd(context.TODO(), "ptp", []byte(ptpConf), nil)
+							Expect(err).NotTo(HaveOccurred())
+							Expect(r.Print()).To(Succeed())
+
+							return err
+						})
+						Expect(err).NotTo(HaveOccurred())
+
+						containerWithQoSResult, err := types100.GetResult(containerWithQoSRes)
+						Expect(err).NotTo(HaveOccurred())
+
+						bandwidthPluginConf := &PluginConf{}
+						err = json.Unmarshal([]byte(ptpConf), &bandwidthPluginConf)
+						Expect(err).NotTo(HaveOccurred())
+
+						bandwidthPluginConf.RuntimeConfig.Bandwidth = &BandwidthEntry{
 							IngressBurst: burstInBits,
 							IngressRate:  rateInBits,
 							EgressBurst:  burstInBits,
 							EgressRate:   rateInBits,
 						}
-						checkConf.Type = "bandwidth"
-
-						newCheckBytes, err := buildOneConfig("myBWnet", ver, checkConf, result)
+						bandwidthPluginConf.Type = "bandwidth"
+						newConfBytes, err := buildOneConfig("myBWnet", ver, bandwidthPluginConf, containerWithQoSResult)
 						Expect(err).NotTo(HaveOccurred())
 
-						args = &skel.CmdArgs{
+						args := &skel.CmdArgs{
 							ContainerID: "dummy3",
 							Netns:       containerWithQoSNS.Path(),
 							IfName:      containerWithQoSIFName,
-							StdinData:   newCheckBytes,
+							StdinData:   newConfBytes,
 						}
 
-						err = testutils.CmdCheck(containerWithQoSNS.Path(), args.ContainerID, "", func() error { return cmdCheck(args) })
-						Expect(err).NotTo(HaveOccurred())
+						result, out, err := testutils.CmdAdd(containerWithQoSNS.Path(), args.ContainerID, "", newConfBytes, func() error { return cmdAdd(args) })
+						Expect(err).NotTo(HaveOccurred(), string(out))
+
+						if testutils.SpecVersionHasCHECK(ver) {
+							// Do CNI Check
+							checkConf := &PluginConf{}
+							err = json.Unmarshal([]byte(ptpConf), &checkConf)
+							Expect(err).NotTo(HaveOccurred())
+
+							checkConf.RuntimeConfig.Bandwidth = &BandwidthEntry{
+								IngressBurst: burstInBits,
+								IngressRate:  rateInBits,
+								EgressBurst:  burstInBits,
+								EgressRate:   rateInBits,
+							}
+							checkConf.Type = "bandwidth"
+
+							newCheckBytes, err := buildOneConfig("myBWnet", ver, checkConf, result)
+							Expect(err).NotTo(HaveOccurred())
+
+							args = &skel.CmdArgs{
+								ContainerID: "dummy3",
+								Netns:       containerWithQoSNS.Path(),
+								IfName:      containerWithQoSIFName,
+								StdinData:   newCheckBytes,
+							}
+
+							err = testutils.CmdCheck(containerWithQoSNS.Path(), args.ContainerID, "", func() error { return cmdCheck(args) })
+							Expect(err).NotTo(HaveOccurred())
+						}
+
+						return nil
+					})).To(Succeed())
+
+					By("starting a tcp server on both containers")
+					portServerWithQoS, echoServerWithQoS = startEchoServerInNamespace(containerWithQoSNS)
+					portServerWithoutQoS, echoServerWithoutQoS = startEchoServerInNamespace(containerWithoutQoSNS)
+				})
+
+				AfterEach(func() {
+					Expect(os.RemoveAll(dataDir)).To(Succeed())
+
+					Expect(containerWithQoSNS.Close()).To(Succeed())
+					Expect(testutils.UnmountNS(containerWithQoSNS)).To(Succeed())
+					Expect(containerWithoutQoSNS.Close()).To(Succeed())
+					Expect(testutils.UnmountNS(containerWithoutQoSNS)).To(Succeed())
+
+					if echoServerWithoutQoS != nil {
+						echoServerWithoutQoS.Kill()
 					}
+					if echoServerWithQoS != nil {
+						echoServerWithQoS.Kill()
+					}
+				})
 
-					return nil
-				})).To(Succeed())
+				// Measure is deprecated and not run by ginkgo so we just measure time elapsed in a basic way
+				// https://onsi.github.io/ginkgo/MIGRATING_TO_V2#removed-measure
+				It("limits ingress traffic on veth device", func() {
+					var runtimeWithLimit time.Duration
+					var runtimeWithoutLimit time.Duration
 
-				By("starting a tcp server on both containers")
-				portServerWithQoS, echoServerWithQoS = startEchoServerInNamespace(containerWithQoSNS)
-				portServerWithoutQoS, echoServerWithoutQoS = startEchoServerInNamespace(containerWithoutQoSNS)
-			})
+					By("gather timing statistics about both containers")
 
-			AfterEach(func() {
-				Expect(os.RemoveAll(dataDir)).To(Succeed())
-
-				Expect(containerWithQoSNS.Close()).To(Succeed())
-				Expect(testutils.UnmountNS(containerWithQoSNS)).To(Succeed())
-				Expect(containerWithoutQoSNS.Close()).To(Succeed())
-				Expect(testutils.UnmountNS(containerWithoutQoSNS)).To(Succeed())
-
-				if echoServerWithoutQoS != nil {
-					echoServerWithoutQoS.Kill()
-				}
-				if echoServerWithQoS != nil {
-					echoServerWithQoS.Kill()
-				}
-			})
-
-			It("cmdCheck works", func() {})
-			// FIXME: Deprecated and not run by ginkgo
-			// https://onsi.github.io/ginkgo/MIGRATING_TO_V2#removed-measure
-			Measure("limits ingress traffic on veth device", func(b Benchmarker) {
-				var runtimeWithLimit time.Duration
-				var runtimeWithoutLimit time.Duration
-
-				By("gather timing statistics about both containers")
-				By("sending tcp traffic to the container that has traffic shaped", func() {
-					runtimeWithLimit = b.Time("with qos", func() {
+					By("sending tcp traffic to the container that has traffic shaped", func() {
+						start := time.Now()
 						result, err := types100.GetResult(containerWithQoSRes)
 						Expect(err).NotTo(HaveOccurred())
-
 						makeTCPClientInNS(hostNs.Path(), result.IPs[0].Address.IP.String(), portServerWithQoS, packetInBytes)
+						end := time.Now()
+						runtimeWithLimit = end.Sub(start)
 					})
-				})
 
-				By("sending tcp traffic to the container that does not have traffic shaped", func() {
-					runtimeWithoutLimit = b.Time("without qos", func() {
+					By("sending tcp traffic to the container that does not have traffic shaped", func() {
+						start := time.Now()
 						result, err := types100.GetResult(containerWithoutQoSRes)
 						Expect(err).NotTo(HaveOccurred())
-
 						makeTCPClientInNS(hostNs.Path(), result.IPs[0].Address.IP.String(), portServerWithoutQoS, packetInBytes)
+						end := time.Now()
+						runtimeWithoutLimit = end.Sub(start)
 					})
+
+					Expect(runtimeWithLimit).To(BeNumerically(">", runtimeWithoutLimit+1000*time.Millisecond))
 				})
-
-				Expect(runtimeWithLimit).To(BeNumerically(">", runtimeWithoutLimit+1000*time.Millisecond))
-			}, 1)
+			})
 		})
-
 	}
 
 	Describe("Validating input", func() {
