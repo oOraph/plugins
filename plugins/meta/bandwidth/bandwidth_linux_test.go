@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"math"
 	"net"
 	"os"
@@ -1754,7 +1755,11 @@ var _ = Describe("bandwidth test", func() {
 					rateInBytes := 1000
 					rateInBits = uint64(rateInBytes * 8)
 					burstInBits = rateInBits * 2
-					packetInBytes = rateInBytes * 25
+					// NOTE: every test with QoS should last approximately the integer factor below in seconds but the ones with QoS take longer than expected
+					// (with both tbf or htb, it's not been introduced with the switch to htb...).
+					// TODO: clarify this, maybe there is some additionnal fragmentation due to the small mtu, or may be the client binary used does not
+					// send the amount of data it should. Iperf works ok though, when testing qos manually...
+					packetInBytes = rateInBytes * 3
 
 					var err error
 					dataDir, err = os.MkdirTemp("", "bandwidth_linux_test")
@@ -1897,18 +1902,22 @@ var _ = Describe("bandwidth test", func() {
 						start := time.Now()
 						result, err := types100.GetResult(containerWithQoSRes)
 						Expect(err).NotTo(HaveOccurred())
+						log.Printf("Host ns %s, result %+v, port %d", hostNs.Path(), result, portServerWithQoS)
 						makeTCPClientInNS(hostNs.Path(), result.IPs[0].Address.IP.String(), portServerWithQoS, packetInBytes)
 						end := time.Now()
 						runtimeWithLimit = end.Sub(start)
+						log.Printf("Elapsed with qos %.2f", runtimeWithLimit.Seconds())
 					})
 
 					By("sending tcp traffic to the container that does not have traffic shaped", func() {
 						start := time.Now()
 						result, err := types100.GetResult(containerWithoutQoSRes)
+						log.Printf("Host ns %s, result %+v, port %d", hostNs.Path(), result, portServerWithoutQoS)
 						Expect(err).NotTo(HaveOccurred())
 						makeTCPClientInNS(hostNs.Path(), result.IPs[0].Address.IP.String(), portServerWithoutQoS, packetInBytes)
 						end := time.Now()
 						runtimeWithoutLimit = end.Sub(start)
+						log.Printf("Elapsed without qos %.2f", runtimeWithoutLimit.Seconds())
 					})
 
 					Expect(runtimeWithLimit).To(BeNumerically(">", runtimeWithoutLimit+1000*time.Millisecond))
