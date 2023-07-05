@@ -104,7 +104,9 @@ func getBandwidth(conf *PluginConf) *BandwidthEntry {
 	}
 
 	if bw.NonShapedSubnets == nil {
-		bw.NonShapedSubnets = conf.BandwidthEntry.NonShapedSubnets
+		if conf.BandwidthEntry != nil {
+			bw.NonShapedSubnets = conf.BandwidthEntry.NonShapedSubnets
+		}
 	}
 
 	if bw.NonShapedSubnets == nil {
