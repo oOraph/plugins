@@ -1084,22 +1084,22 @@ var _ = Describe("bandwidth test", func() {
 		})
 
 		// Runtime config parameters are expected to be preempted by the global config ones whenever specified
-		It(fmt.Sprintf("[%s] works with a Veth pair using preempted runtime config", ver), func() {
+		It(fmt.Sprintf("[%s] should apply static config when both static config and runtime config exist", ver), func() {
 			conf := fmt.Sprintf(`{
 			"cniVersion": "%s",
 			"name": "cni-plugin-bandwidth-test",
 			"type": "bandwidth",
-			"ingressRate": 8,
-			"ingressBurst": 8,
-			"egressRate": 16,
-			"egressBurst": 9,
+			"ingressRate": 0,
+			"ingressBurst": 0,
+			"egressRate": 123,
+			"egressBurst": 123,
 			"nonShapedSubnets": ["192.168.0.0/24"],
 			"runtimeConfig": {
 				"bandWidth": {
-					"ingressRate": 123,
-					"ingressBurst": 123,
-					"egressRate": 123,
-					"egressBurst": 123,
+					"ingressRate": 8,
+					"ingressBurst": 8,
+					"egressRate": 16,
+					"egressBurst": 9,
 					"nonShapedSubnets": ["10.0.0.0/8", "fd00:db8:abcd:1234:e000::/68"]
 				}
 			},
@@ -1172,9 +1172,9 @@ var _ = Describe("bandwidth test", func() {
 				// Class with traffic shapping settings
 				Expect(classes[1]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
 				Expect(classes[1].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, uint16(qdiscs[0].(*netlink.Htb).Defcls))))
-				Expect(classes[1].(*netlink.HtbClass).Rate).To(Equal(uint64(2)))
+				Expect(classes[1].(*netlink.HtbClass).Rate).To(Equal(uint64(15)))
 				// Expect(classes[1].(*netlink.HtbClass).Buffer).To(Equal(uint32(7812500)))
-				Expect(classes[1].(*netlink.HtbClass).Ceil).To(Equal(uint64(4)))
+				Expect(classes[1].(*netlink.HtbClass).Ceil).To(Equal(uint64(30)))
 				Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
 
 				filters, err := netlink.FilterList(ifbLink, qdiscs[0].Attrs().Handle)
@@ -1225,120 +1225,140 @@ var _ = Describe("bandwidth test", func() {
 				qdiscs, err := netlink.QdiscList(vethLink)
 				Expect(err).NotTo(HaveOccurred())
 
+				// No ingress QoS just mirroring
 				Expect(qdiscs).To(HaveLen(2))
 				Expect(qdiscs[0].Attrs().LinkIndex).To(Equal(vethLink.Attrs().Index))
-				Expect(qdiscs[0]).To(BeAssignableToTypeOf(&netlink.Htb{}))
-				Expect(qdiscs[0].(*netlink.Htb).Defcls).To(Equal(uint32(DefaultClassMinorID)))
+				Expect(qdiscs[0]).NotTo(BeAssignableToTypeOf(&netlink.Htb{}))
+				Expect(qdiscs[1]).NotTo(BeAssignableToTypeOf(&netlink.Htb{}))
 
-				classes, err := netlink.ClassList(vethLink, qdiscs[0].Attrs().Handle)
-
-				Expect(err).NotTo(HaveOccurred())
-				Expect(classes).To(HaveLen(2))
-
-				// Uncapped class
-				Expect(classes[0]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
-				Expect(classes[0].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, 1)))
-				Expect(classes[0].(*netlink.HtbClass).Rate).To(Equal(uint64(UncappedRate)))
-				Expect(classes[0].(*netlink.HtbClass).Buffer).To(Equal(uint32(0)))
-				Expect(classes[0].(*netlink.HtbClass).Ceil).To(Equal(uint64(UncappedRate)))
-				Expect(classes[0].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
-
-				// Class with traffic shapping settings
-				Expect(classes[1]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
-				Expect(classes[1].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, uint16(qdiscs[0].(*netlink.Htb).Defcls))))
-				Expect(classes[1].(*netlink.HtbClass).Rate).To(Equal(uint64(1)))
-				// Expect(classes[1].(*netlink.HtbClass).Buffer).To(Equal(uint32(15625000)))
-				Expect(classes[1].(*netlink.HtbClass).Ceil).To(Equal(uint64(2)))
-				Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
-
-				filters, err := netlink.FilterList(vethLink, qdiscs[0].Attrs().Handle)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(filters).To(HaveLen(1))
-
-				// traffic to 192.168.0.0/24 redirected to uncapped class
-				Expect(filters[0]).To(BeAssignableToTypeOf(&netlink.U32{}))
-				Expect(filters[0].(*netlink.U32).Actions).To(HaveLen(0))
-				Expect(filters[0].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_ALL)))
-				Expect(filters[0].Attrs().LinkIndex).To(Equal(vethLink.Attrs().Index))
-				Expect(filters[0].Attrs().Priority).To(Equal(uint16(16)))
-				Expect(filters[0].Attrs().Parent).To(Equal(qdiscs[0].Attrs().Handle))
-				Expect(filters[0].(*netlink.U32).ClassId).To(Equal(netlink.MakeHandle(1, 1)))
-
-				filterSel := filters[0].(*netlink.U32).Sel
-				Expect(filterSel).To(BeAssignableToTypeOf(&netlink.TcU32Sel{}))
-				Expect(filterSel.Flags).To(Equal(uint8(netlink.TC_U32_TERMINAL)))
-				Expect(filterSel.Keys).To(HaveLen(1))
-				Expect(filterSel.Nkeys).To(Equal(uint8(1)))
-
-				// The filter should match to 192.168.0.0/24 dst address in other words it should be:
-				// match c0a80000/ffffff00 at 16
-				selKey := filterSel.Keys[0]
-				Expect(selKey.Val).To(Equal(uint32(192*math.Pow(256, 3) + 168*math.Pow(256, 2))))
-				Expect(selKey.Off).To(Equal(int32(16)))
-				Expect(selKey.Mask).To(Equal(uint32(255*math.Pow(256, 3) + 255*math.Pow(256, 2) + 255*256)))
 				return nil
 			})).To(Succeed())
 		})
 
+		It(fmt.Sprintf("[%s] should apply static config when both static config and runtime config exist (bad config example)", ver), func() {
+			conf := fmt.Sprintf(`{
+			"cniVersion": "%s",
+			"name": "cni-plugin-bandwidth-test",
+			"type": "bandwidth",
+			"ingressRate": 0,
+			"ingressBurst": 123,
+			"egressRate": 123,
+			"egressBurst": 123,
+			"runtimeConfig": {
+				"bandWidth": {
+					"ingressRate": 8,
+					"ingressBurst": 8,
+					"egressRate": 16,
+					"egressBurst": 9
+				}
+			},
+			"prevResult": {
+				"interfaces": [
+					{
+						"name": "%s",
+						"sandbox": ""
+					},
+					{
+						"name": "%s",
+						"sandbox": "%s"
+					}
+				],
+				"ips": [
+					{
+						"version": "4",
+						"address": "%s/24",
+						"gateway": "10.0.0.1",
+						"interface": 1
+					}
+				],
+				"routes": []
+			}
+		}`, ver, hostIfname, containerIfname, containerNs.Path(), containerIP.String())
+
+			args := &skel.CmdArgs{
+				ContainerID: "dummy",
+				Netns:       containerNs.Path(),
+				IfName:      "eth0",
+				StdinData:   []byte(conf),
+			}
+
+			Expect(hostNs.Do(func(netNS ns.NetNS) error {
+				defer GinkgoRecover()
+
+				_, _, err := testutils.CmdAdd(containerNs.Path(), args.ContainerID, "", []byte(conf), func() error { return cmdAdd(args) })
+				Expect(err).To(MatchError("if burst is set, rate must also be set"))
+				return nil
+			})).To(Succeed())
+		})
+
+		Describe("cmdDEL", func() {
+			It(fmt.Sprintf("[%s] works with a Veth pair using 0.3.0 config", ver), func() {
+				conf := fmt.Sprintf(`{
+					"cniVersion": "%s",
+					"name": "cni-plugin-bandwidth-test",
+					"type": "bandwidth",
+					"ingressRate": 8,
+					"ingressBurst": 8,
+					"egressRate": 9,
+					"egressBurst": 9,
+					"prevResult": {
+						"interfaces": [
+							{
+								"name": "%s",
+								"sandbox": ""
+							},
+							{
+								"name": "%s",
+								"sandbox": "%s"
+							}
+						],
+						"ips": [
+							{
+								"version": "4",
+								"address": "%s/24",
+								"gateway": "10.0.0.1",
+								"interface": 1
+							}
+						],
+						"routes": []
+					}
+				}`, ver, hostIfname, containerIfname, containerNs.Path(), containerIP.String())
+
+				args := &skel.CmdArgs{
+					ContainerID: "dummy",
+					Netns:       containerNs.Path(),
+					IfName:      containerIfname,
+					StdinData:   []byte(conf),
+				}
+
+				Expect(hostNs.Do(func(netNS ns.NetNS) error {
+					defer GinkgoRecover()
+					_, out, err := testutils.CmdAdd(containerNs.Path(), args.ContainerID, "", []byte(conf), func() error { return cmdAdd(args) })
+					Expect(err).NotTo(HaveOccurred(), string(out))
+
+					_, err = netlink.LinkByName(hostIfname)
+					Expect(err).NotTo(HaveOccurred())
+
+					_, err = netlink.LinkByName(ifbDeviceName)
+					Expect(err).NotTo(HaveOccurred())
+
+					err = testutils.CmdDel(containerNs.Path(), args.ContainerID, "", func() error { return cmdDel(args) })
+					Expect(err).NotTo(HaveOccurred(), string(out))
+
+					_, err = netlink.LinkByName(ifbDeviceName)
+					Expect(err).To(HaveOccurred())
+
+					// The host veth peer should remain as it has not be created by this plugin
+					_, err = netlink.LinkByName(hostIfname)
+					Expect(err).NotTo(HaveOccurred())
+
+					return nil
+				})).To(Succeed())
+			})
+		})
+
 	}
 })
-
-// 	It(fmt.Sprintf("[%s] should apply static config when both static config and runtime config exist", ver), func() {
-// 		conf := fmt.Sprintf(`{
-// 			"cniVersion": "%s",
-// 			"name": "cni-plugin-bandwidth-test",
-// 			"type": "bandwidth",
-// 			"ingressRate": 0,
-// 			"ingressBurst": 123,
-// 			"egressRate": 123,
-// 			"egressBurst": 123,
-// 			"runtimeConfig": {
-// 				"bandWidth": {
-// 					"ingressRate": 8,
-// 					"ingressBurst": 8,
-// 					"egressRate": 16,
-// 					"egressBurst": 9
-// 				}
-// 			},
-// 			"prevResult": {
-// 				"interfaces": [
-// 					{
-// 						"name": "%s",
-// 						"sandbox": ""
-// 					},
-// 					{
-// 						"name": "%s",
-// 						"sandbox": "%s"
-// 					}
-// 				],
-// 				"ips": [
-// 					{
-// 						"version": "4",
-// 						"address": "%s/24",
-// 						"gateway": "10.0.0.1",
-// 						"interface": 1
-// 					}
-// 				],
-// 				"routes": []
-// 			}
-// 		}`, ver, hostIfname, containerIfname, containerNs.Path(), containerIP.String())
-
-// 		args := &skel.CmdArgs{
-// 			ContainerID: "dummy",
-// 			Netns:       containerNs.Path(),
-// 			IfName:      "eth0",
-// 			StdinData:   []byte(conf),
-// 		}
-
-// 		Expect(hostNs.Do(func(netNS ns.NetNS) error {
-// 			defer GinkgoRecover()
-
-// 			_, _, err := testutils.CmdAdd(containerNs.Path(), args.ContainerID, "", []byte(conf), func() error { return cmdAdd(args) })
-// 			Expect(err).To(MatchError("if burst is set, rate must also be set"))
-// 			return nil
-// 		})).To(Succeed())
-// 	})
-// })
 
 // 		Describe("cmdDEL", func() {
 // 			It(fmt.Sprintf("[%s] works with a Veth pair using 0.3.0 config", ver), func() {
