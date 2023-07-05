@@ -1809,6 +1809,7 @@ var _ = Describe("bandwidth test", func() {
 				}
 			})
 
+			It("cmdCheck works", func() {})
 			// FIXME: Deprecated and not run by ginkgo
 			// https://onsi.github.io/ginkgo/MIGRATING_TO_V2#removed-measure
 			Measure("limits ingress traffic on veth device", func(b Benchmarker) {
