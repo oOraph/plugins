@@ -198,8 +198,8 @@ var _ = Describe("Basic PTP using cnitool", func() {
 			By(fmt.Sprintf("starting echo server in %s\n\n", contNS2.ShortName()))
 			basicBridgePort, basicBridgeSession = startEchoServerInNamespace(contNS2)
 
-			packetInBytes := 20000 // The shaper needs to 'warm'. Send enough to cause it to throttle,
-			// balanced by run time.
+			// NOTE: traffic shapping is not that precise at low rates so we increase rates and quantities a bit
+			packetInBytes := 5000000
 
 			By(fmt.Sprintf("sending tcp traffic to the chained, bridged, traffic shaped container on ip address '%s:%d'\n\n", chainedBridgeIP, chainedBridgeBandwidthPort))
 			start := time.Now()
