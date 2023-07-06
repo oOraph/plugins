@@ -66,6 +66,7 @@ var _ = Describe("Basic PTP using cnitool", func() {
 				"NETCONFPATH=" + netConfPath,
 				"PATH=" + os.Getenv("PATH"),
 			})
+			log.Printf("Env PATH=%s, CNI_PATH=%s, NETCONFPATH=%s", os.Getenv("PATH"), cniPath, netConfPath)
 
 			hostNS = Namespace(fmt.Sprintf("cni-test-host-%x", rand.Int31()))
 			hostNS.Add()
@@ -83,10 +84,10 @@ var _ = Describe("Basic PTP using cnitool", func() {
 			log.Printf("Test infos, host ns %s, container ns %s", hostNS, contNS)
 
 			o := env.runInNS(contNS, "ip", "addr")
-			log.Printf("container ns %s, network before any setup %s", contNS, o)
+			log.Printf("container ns %s, network before any setup [%s]", contNS, o)
 
 			o = env.runInNS(hostNS, "ip", "addr")
-			log.Printf("host ns %s, network before any setup %s", hostNS, o)
+			log.Printf("host ns %s, network before any setup [%s]", hostNS, o)
 
 			log.Printf("Host ns %s, '%s add %s %s'", hostNS, cnitoolBin, netName, contNS.LongName())
 
@@ -100,7 +101,7 @@ var _ = Describe("Basic PTP using cnitool", func() {
 
 			addrOutput := env.runInNS(contNS, "ip", "addr")
 
-			log.Printf("Container ns %s network after setup %s", contNS, addrOutput)
+			log.Printf("Container ns %s network after setup [%s]", contNS, addrOutput)
 			Expect(addrOutput).To(ContainSubstring(expectedIPPrefix))
 
 			env.runInNS(hostNS, cnitoolBin, "del", netName, contNS.LongName())
@@ -117,7 +118,8 @@ var _ = Describe("Basic PTP using cnitool", func() {
 		})
 	})
 
-	// FIXME: measure deprecated not run anymore...
+	// FIXME: ginkgo is a bazooka to kill a fly, as all testing frameworks... it acts weird with log, output...
+	// measure deprecated, does not run anymore...
 	Context("when the bandwidth plugin is chained with a plugin that returns multiple adapters", func() {
 		var (
 			hostNS                                            Namespace
@@ -215,7 +217,7 @@ func (e TestEnv) run(bin string, args ...string) string {
 	cmd.Env = e
 	session, err := gexec.Start(cmd, GinkgoWriter, GinkgoWriter)
 	Expect(err).NotTo(HaveOccurred())
-	// Eventually(session, "5s").Should(gexec.Exit(0))
+	Eventually(session, "5s").Should(gexec.Exit(0))
 	return string(session.Out.Contents())
 }
 
