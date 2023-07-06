@@ -17,8 +17,10 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"math"
 	"net"
+	"os"
 
 	"github.com/vishvananda/netlink"
 
@@ -98,6 +100,7 @@ func parseConfig(stdin []byte) (*PluginConf, error) {
 }
 
 func getBandwidth(conf *PluginConf) *BandwidthEntry {
+
 	bw := conf.BandwidthEntry
 	if bw == nil && conf.RuntimeConfig.Bandwidth != nil {
 		bw = conf.RuntimeConfig.Bandwidth
@@ -105,6 +108,39 @@ func getBandwidth(conf *PluginConf) *BandwidthEntry {
 
 	if bw != nil && bw.NonShapedSubnets == nil {
 		bw.NonShapedSubnets = make([]string, 0)
+	}
+
+	// HF fork: since the bandwidth plugin cannot be tuned through aws-vpc-cni config, let's use another config file
+	// to override all bandwidth params whenever the file exists and is correctly formatted
+	// The file is silently ignored otherwise. Only the parameters specified in the file are overriden
+	// NOTE: the cni only scans for .conf and .json extension files in the directory so our file should be ignored
+	// for anything else but us
+	readFile, err := os.Open("/etc/cni/net.d/huggingface_bw.hook")
+
+	if err == nil {
+		defer readFile.Close()
+		overrideBw := BandwidthEntry{}
+		byteValue, _ := ioutil.ReadAll(readFile)
+		err = json.Unmarshal(byteValue, &overrideBw)
+		if err == nil {
+			if bw == nil {
+				bw = &overrideBw
+			} else {
+				if (overrideBw.EgressRate != 0) && (overrideBw.EgressBurst != 0) {
+					bw.EgressBurst = overrideBw.EgressBurst
+					bw.EgressRate = overrideBw.EgressRate
+				}
+
+				if (overrideBw.IngressRate != 0) && (overrideBw.IngressBurst != 0) {
+					bw.IngressBurst = overrideBw.IngressBurst
+					bw.IngressRate = overrideBw.IngressRate
+				}
+
+				if overrideBw.NonShapedSubnets != nil {
+					bw.NonShapedSubnets = overrideBw.NonShapedSubnets
+				}
+			}
+		}
 	}
 
 	return bw
