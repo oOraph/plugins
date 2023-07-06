@@ -17,8 +17,10 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"math"
 	"net"
+	"os"
 
 	"github.com/vishvananda/netlink"
 
@@ -109,6 +111,60 @@ func getBandwidth(conf *PluginConf) *BandwidthEntry {
 		}
 		if bw.ShapedSubnets == nil {
 			bw.ShapedSubnets = make([]string, 0)
+		}
+	}
+
+	// HF fork: since the bandwidth plugin cannot be tuned through aws-vpc-cni config, let's use another config file
+	// to override all bandwidth params whenever the file exists and is correctly formatted
+	// The file is silently ignored otherwise. Only the parameters specified in the file are overridden
+	// NOTE: the cni only scans for .conf and .json extension files in the directory so our file should be ignored
+	// for anything else but us
+	readFile, err := os.Open("/etc/cni/net.d/huggingface_bw.hook")
+
+	if err == nil {
+		defer readFile.Close()
+		overrideBw := BandwidthEntry{}
+		byteValue, _ := ioutil.ReadAll(readFile)
+		err = json.Unmarshal(byteValue, &overrideBw)
+		if err == nil {
+			if bw == nil {
+				if (overrideBw.EgressRate != 0 && overrideBw.EgressBurst != 0) ||
+					(overrideBw.IngressRate != 0 && overrideBw.IngressBurst != 0) {
+					bw = &overrideBw
+				}
+			} else {
+				if overrideBw.EgressRate != 0 {
+					bw.EgressRate = overrideBw.EgressRate
+				}
+				if overrideBw.EgressBurst != 0 {
+					bw.EgressBurst = overrideBw.EgressBurst
+				}
+				if overrideBw.IngressRate != 0 {
+					bw.IngressRate = overrideBw.IngressRate
+				}
+				if overrideBw.IngressBurst != 0 {
+					bw.IngressBurst = overrideBw.IngressBurst
+				}
+				if overrideBw.UnshapedSubnets != nil {
+					bw.UnshapedSubnets = overrideBw.UnshapedSubnets
+				}
+
+				if overrideBw.ShapedSubnets != nil {
+					bw.ShapedSubnets = overrideBw.ShapedSubnets
+				}
+
+				// NOTE: in our fork validateRateAndBurst becomes useless because we fix it on the flight here
+				// We do so to allow only overriding rate or burst in our hook config
+				if bw.IngressRate == 0 || bw.IngressBurst == 0 {
+					bw.IngressBurst = 0
+					bw.IngressRate = 0
+				}
+
+				if bw.EgressRate == 0 || bw.EgressBurst == 0 {
+					bw.EgressBurst = 0
+					bw.EgressRate = 0
+				}
+			}
 		}
 	}
 
