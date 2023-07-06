@@ -16,10 +16,10 @@
             "type": "bandwidth",
             "runtimeConfig": {
                 "bandWidth": {
-                    "ingressRate": 8000000,
-                    "ingressBurst": 16000000,
-                    "egressRate": 8000000,
-                    "egressBurst": 16000000
+                    "ingressRate": 8000,
+                    "ingressBurst": 16000,
+                    "egressRate": 8000,
+                    "egressBurst": 16000
                 }
             }
         }
