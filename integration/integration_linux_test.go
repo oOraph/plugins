@@ -61,6 +61,13 @@ var _ = Describe("Basic PTP using cnitool", func() {
 			netConfPath, err := filepath.Abs("./testdata")
 			Expect(err).NotTo(HaveOccurred())
 
+			// Flush ipam stores to avoid conflicts
+			err = os.RemoveAll("/tmp/chained-ptp-bandwidth-test")
+			Expect(err).NotTo(HaveOccurred())
+
+			err = os.RemoveAll("/tmp/basic-ptp-test")
+			Expect(err).NotTo(HaveOccurred())
+
 			env = TestEnv([]string{
 				"CNI_PATH=" + cniPath,
 				"NETCONFPATH=" + netConfPath,
@@ -91,13 +98,13 @@ var _ = Describe("Basic PTP using cnitool", func() {
 
 			log.Printf("Host ns %s, '%s add %s %s'", hostNS, cnitoolBin, netName, contNS.LongName())
 
-			time.Sleep(1200 * time.Second)
+			// time.Sleep(1200 * time.Second)
 
 			env.runInNS(hostNS, cnitoolBin, "add", netName, contNS.LongName())
 
 			log.Printf("Cnitool bin %s ok, sleeping !!!", cnitoolBin)
 
-			time.Sleep(600 * time.Second)
+			// time.Sleep(600 * time.Second)
 
 			addrOutput := env.runInNS(contNS, "ip", "addr")
 
