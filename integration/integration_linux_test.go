@@ -17,6 +17,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"log"
 	"math/rand"
 	"net"
 	"os"
@@ -78,10 +79,27 @@ var _ = Describe("Basic PTP using cnitool", func() {
 			hostNS.Del()
 		})
 
+		log.Printf("Test infos, host ns %s, container ns %s", hostNS, contNS)
+
+		o := env.runInNS(contNS, "ip", "addr")
+		log.Printf("container ns %s, network before any setup %s", contNS, o)
+
+		o = env.runInNS(hostNS, "ip", "addr")
+		log.Printf("host ns %s, network before any setup %s", hostNS, o)
+
 		basicAssertion := func(netName, expectedIPPrefix string) {
+
+			log.Printf("Host ns %s, '%s add %s %s'", hostNS, cnitoolBin, netName, contNS.LongName())
+
+			time.Sleep(60 * time.Second)
+
 			env.runInNS(hostNS, cnitoolBin, "add", netName, contNS.LongName())
 
+			log.Printf("Cnitool bin %s ok !!!", cnitoolBin)
+
 			addrOutput := env.runInNS(contNS, "ip", "addr")
+
+			log.Printf("Container ns %s network after setup %s", contNS, addrOutput)
 			Expect(addrOutput).To(ContainSubstring(expectedIPPrefix))
 
 			env.runInNS(hostNS, cnitoolBin, "del", netName, contNS.LongName())
@@ -91,11 +109,14 @@ var _ = Describe("Basic PTP using cnitool", func() {
 			basicAssertion("basic-ptp", "10.1.2.")
 		})
 
+		log.Printf("Sleeping, check that both ns %s and %s do not exist", hostNS, contNS)
+
 		It("supports add and del with ptp + bandwidth", func() {
 			basicAssertion("chained-ptp-bandwidth", "10.9.2.")
 		})
 	})
 
+	// FIXME: measure deprecated not run anymore...
 	Context("when the bandwidth plugin is chained with a plugin that returns multiple adapters", func() {
 		var (
 			hostNS                                            Namespace
