@@ -90,13 +90,13 @@ var _ = Describe("Basic PTP using cnitool", func() {
 
 			log.Printf("Host ns %s, '%s add %s %s'", hostNS, cnitoolBin, netName, contNS.LongName())
 
-			time.Sleep(60 * time.Second)
+			//time.Sleep(60 * time.Second)
 
 			env.runInNS(hostNS, cnitoolBin, "add", netName, contNS.LongName())
 
 			log.Printf("Cnitool bin %s ok, sleeping !!!", cnitoolBin)
 
-			time.Sleep(60 * time.Second)
+			time.Sleep(600 * time.Second)
 
 			addrOutput := env.runInNS(contNS, "ip", "addr")
 
