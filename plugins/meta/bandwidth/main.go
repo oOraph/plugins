@@ -124,20 +124,37 @@ func getBandwidth(conf *PluginConf) *BandwidthEntry {
 		err = json.Unmarshal(byteValue, &overrideBw)
 		if err == nil {
 			if bw == nil {
-				bw = &overrideBw
+				if (overrideBw.EgressRate != 0 && overrideBw.EgressBurst != 0) ||
+					(overrideBw.IngressRate != 0 && overrideBw.IngressBurst != 0) {
+					bw = &overrideBw
+				}
 			} else {
-				if (overrideBw.EgressRate != 0) && (overrideBw.EgressBurst != 0) {
-					bw.EgressBurst = overrideBw.EgressBurst
+				if overrideBw.EgressRate != 0 {
 					bw.EgressRate = overrideBw.EgressRate
 				}
-
-				if (overrideBw.IngressRate != 0) && (overrideBw.IngressBurst != 0) {
-					bw.IngressBurst = overrideBw.IngressBurst
+				if overrideBw.EgressBurst != 0 {
+					bw.EgressBurst = overrideBw.EgressBurst
+				}
+				if overrideBw.IngressRate != 0 {
 					bw.IngressRate = overrideBw.IngressRate
 				}
-
+				if overrideBw.IngressBurst != 0 {
+					bw.IngressBurst = overrideBw.IngressBurst
+				}
 				if overrideBw.NonShapedSubnets != nil {
 					bw.NonShapedSubnets = overrideBw.NonShapedSubnets
+				}
+
+				// NOTE: in our fork validateRateAndBurst becomes useless because we fix it on the flight here
+				// We do so to allow only overriding rate or burst in our hook config
+				if bw.IngressRate == 0 || bw.IngressBurst == 0 {
+					bw.IngressBurst = 0
+					bw.IngressRate = 0
+				}
+
+				if bw.EgressRate == 0 || bw.EgressBurst == 0 {
+					bw.EgressBurst = 0
+					bw.EgressRate = 0
 				}
 			}
 		}
