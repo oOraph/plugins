@@ -186,18 +186,17 @@ var _ = Describe("Basic PTP using cnitool", func() {
 			By(fmt.Sprintf("sending tcp traffic to the chained, bridged, traffic shaped container on ip address '%s:%d'\n\n", chainedBridgeIP, chainedBridgeBandwidthPort))
 			start := time.Now()
 			makeTCPClientInNS(hostNS.ShortName(), chainedBridgeIP, chainedBridgeBandwidthPort, packetInBytes)
-			runtimeWithLimit := time.Now().Sub(start)
+			runtimeWithLimit := time.Since(start)
 
 			log.Printf("Runtime with qos limit %.2f seconds", runtimeWithLimit.Seconds())
 
 			By(fmt.Sprintf("sending tcp traffic to the basic bridged container on ip address '%s:%d'\n\n", basicBridgeIP, basicBridgePort))
 			start = time.Now()
 			makeTCPClientInNS(hostNS.ShortName(), basicBridgeIP, basicBridgePort, packetInBytes)
-			runtimeWithoutLimit := time.Now().Sub(start)
+			runtimeWithoutLimit := time.Since(start)
 			log.Printf("Runtime without qos limit %.2f seconds", runtimeWithLimit.Seconds())
 
 			Expect(runtimeWithLimit).To(BeNumerically(">", runtimeWithoutLimit+1000*time.Millisecond))
-
 		})
 	})
 })
