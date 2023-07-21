@@ -164,7 +164,7 @@ func createHTB(rateInBits, burstInBits uint64, linkIndex int, excludeSubnets []s
 		Buffer: bufferInBytes,
 		// Let's set up the "burst" rate to twice the specified rate
 		Ceil:    2 * rateInBytes,
-		Cbuffer: 0,
+		Cbuffer: bufferInBytes,
 	}
 
 	err = netlink.ClassAdd(defClass)

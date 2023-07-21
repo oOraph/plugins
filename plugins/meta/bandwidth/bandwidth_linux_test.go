@@ -211,7 +211,7 @@ var _ = Describe("bandwidth test", func() {
 					Expect(classes[1].(*netlink.HtbClass).Rate).To(Equal(uint64(2)))
 					// Expect(classes[1].(*netlink.HtbClass).Buffer).To(Equal(uint32(7812500)))
 					Expect(classes[1].(*netlink.HtbClass).Ceil).To(Equal(uint64(4)))
-					Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
+					// Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
 
 					// Since we do not exclude anything from egress traffic shapping, we should not find any filter
 					filters, err := netlink.FilterList(ifbLink, qdiscs[0].Attrs().Handle)
@@ -264,7 +264,7 @@ var _ = Describe("bandwidth test", func() {
 					Expect(classes[1].(*netlink.HtbClass).Rate).To(Equal(uint64(1)))
 					// Expect(classes[1].(*netlink.HtbClass).Buffer).To(Equal(uint32(15625000)))
 					Expect(classes[1].(*netlink.HtbClass).Ceil).To(Equal(uint64(2)))
-					Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
+					// Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
 
 					// Since we do not exclude anything from ingress traffic shapping, we should not find any filter
 					filters, err := netlink.FilterList(vethLink, qdiscs[0].Attrs().Handle)
@@ -360,7 +360,7 @@ var _ = Describe("bandwidth test", func() {
 					Expect(classes[1].(*netlink.HtbClass).Rate).To(Equal(uint64(2)))
 					// Expect(classes[1].(*netlink.HtbClass).Buffer).To(Equal(uint32(7812500)))
 					Expect(classes[1].(*netlink.HtbClass).Ceil).To(Equal(uint64(4)))
-					Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
+					// Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
 
 					filters, err := netlink.FilterList(ifbLink, qdiscs[0].Attrs().Handle)
 					Expect(err).NotTo(HaveOccurred())
@@ -466,7 +466,7 @@ var _ = Describe("bandwidth test", func() {
 					Expect(classes[1].(*netlink.HtbClass).Rate).To(Equal(uint64(1)))
 					// Expect(classes[1].(*netlink.HtbClass).Buffer).To(Equal(uint32(15625000)))
 					Expect(classes[1].(*netlink.HtbClass).Ceil).To(Equal(uint64(2)))
-					Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
+					// Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
 
 					filters, err := netlink.FilterList(vethLink, qdiscs[0].Attrs().Handle)
 					Expect(err).NotTo(HaveOccurred())
@@ -609,7 +609,7 @@ var _ = Describe("bandwidth test", func() {
 				Expect(classes[1].(*netlink.HtbClass).Rate).To(Equal(uint64(1000)))
 				// Expect(classes[1].(*netlink.HtbClass).Buffer).To(Equal(uint32(7812500)))
 				Expect(classes[1].(*netlink.HtbClass).Ceil).To(Equal(uint64(2000)))
-				Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
+				// Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
 
 				filters, err := netlink.FilterList(ifbLink, qdiscs[0].Attrs().Handle)
 				Expect(err).NotTo(HaveOccurred())
@@ -787,7 +787,7 @@ var _ = Describe("bandwidth test", func() {
 				Expect(classes[1].(*netlink.HtbClass).Rate).To(Equal(uint64(1000)))
 				// Expect(classes[1].(*netlink.HtbClass).Buffer).To(Equal(uint32(15625000)))
 				Expect(classes[1].(*netlink.HtbClass).Ceil).To(Equal(uint64(2000)))
-				Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
+				// Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
 
 				// No subnets are exluded in this example so we should not get any filter
 				filters, err := netlink.FilterList(containerIfLink, qdiscs[0].Attrs().Handle)
@@ -984,7 +984,7 @@ var _ = Describe("bandwidth test", func() {
 				Expect(classes[1].(*netlink.HtbClass).Rate).To(Equal(uint64(2)))
 				// Expect(classes[1].(*netlink.HtbClass).Buffer).To(Equal(uint32(7812500)))
 				Expect(classes[1].(*netlink.HtbClass).Ceil).To(Equal(uint64(4)))
-				Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
+				// Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
 
 				filters, err := netlink.FilterList(ifbLink, qdiscs[0].Attrs().Handle)
 				Expect(err).NotTo(HaveOccurred())
@@ -1058,7 +1058,7 @@ var _ = Describe("bandwidth test", func() {
 				Expect(classes[1].(*netlink.HtbClass).Rate).To(Equal(uint64(1)))
 				// Expect(classes[1].(*netlink.HtbClass).Buffer).To(Equal(uint32(15625000)))
 				Expect(classes[1].(*netlink.HtbClass).Ceil).To(Equal(uint64(2)))
-				Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
+				// Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
 
 				filters, err := netlink.FilterList(vethLink, qdiscs[0].Attrs().Handle)
 				Expect(err).NotTo(HaveOccurred())
@@ -1181,7 +1181,7 @@ var _ = Describe("bandwidth test", func() {
 				Expect(classes[1].(*netlink.HtbClass).Rate).To(Equal(uint64(15)))
 				// Expect(classes[1].(*netlink.HtbClass).Buffer).To(Equal(uint32(7812500)))
 				Expect(classes[1].(*netlink.HtbClass).Ceil).To(Equal(uint64(30)))
-				Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
+				// Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
 
 				filters, err := netlink.FilterList(ifbLink, qdiscs[0].Attrs().Handle)
 				Expect(err).NotTo(HaveOccurred())
@@ -1530,7 +1530,7 @@ var _ = Describe("bandwidth test", func() {
 					Expect(classes[1].(*netlink.HtbClass).Rate).To(Equal(uint64(2)))
 					// Expect(classes[1].(*netlink.HtbClass).Buffer).To(Equal(uint32(7812500)))
 					Expect(classes[1].(*netlink.HtbClass).Ceil).To(Equal(uint64(4)))
-					Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
+					// Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
 
 					// Since we do not exclude anything from egress traffic shapping, we should not find any filter
 					filters, err := netlink.FilterList(ifbLink, qdiscs[0].Attrs().Handle)
@@ -1582,7 +1582,7 @@ var _ = Describe("bandwidth test", func() {
 					Expect(classes[1].(*netlink.HtbClass).Rate).To(Equal(uint64(1)))
 					// Expect(classes[1].(*netlink.HtbClass).Buffer).To(Equal(uint32(15625000)))
 					Expect(classes[1].(*netlink.HtbClass).Ceil).To(Equal(uint64(2)))
-					Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
+					// Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
 
 					// Since we do not exclude anything from ingress traffic shapping, we should not find any filter
 					filters, err := netlink.FilterList(vethLink, qdiscs[0].Attrs().Handle)
