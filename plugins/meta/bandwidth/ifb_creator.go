@@ -26,12 +26,13 @@ import (
 	"github.com/containernetworking/plugins/pkg/ip"
 )
 
-const latencyInMillis = 25
-const UncappedRate uint64 = 100_000_000_000
-const DefaultClassMinorID = 48
+const (
+	latencyInMillis            = 25
+	UncappedRate        uint64 = 100_000_000_000
+	DefaultClassMinorID        = 48
+)
 
 func CreateIfb(ifbDeviceName string, mtu int, qlen int) error {
-
 	if qlen < 1000 {
 		qlen = 1000
 	}
@@ -68,7 +69,6 @@ func CreateIngressQdisc(rateInBits, burstInBits uint64, excludeSubnets []string,
 }
 
 func CreateEgressQdisc(rateInBits, burstInBits uint64, excludeSubnets []string, hostDeviceName string, ifbDeviceName string) error {
-
 	ifbDevice, err := netlink.LinkByName(ifbDeviceName)
 	if err != nil {
 		return fmt.Errorf("get ifb device: %s", err)
@@ -125,7 +125,6 @@ func CreateEgressQdisc(rateInBits, burstInBits uint64, excludeSubnets []string, 
 }
 
 func createHTB(rateInBits, burstInBits uint64, linkIndex int, excludeSubnets []string) error {
-
 	// Netlink struct fields are not clear, let's use shell
 
 	// Step 1 qdisc
@@ -176,7 +175,7 @@ func createHTB(rateInBits, burstInBits uint64, linkIndex int, excludeSubnets []s
 	// The uncapped class for the excluded subnets
 	// cmd = exec.Command("/usr/sbin/tc", "class", "add", "dev", interfaceName, "parent", "1:", "classid", "1:1", "htb",
 	// 	"rate", "100000000000")
-	bigRate := uint64(UncappedRate)
+	bigRate := UncappedRate
 	uncappedClass := &netlink.HtbClass{
 		ClassAttrs: netlink.ClassAttrs{
 			LinkIndex: linkIndex,
@@ -268,10 +267,10 @@ func createHTB(rateInBits, burstInBits uint64, linkIndex int, excludeSubnets []s
 		}
 
 		if len(keys) != cap(keys) {
-			// We need to shrink the keys capacity down to its length if we do not want additional "matchall" rules to be set in the filter
-			shrinkedKeys := make([]netlink.TcU32Key, len(keys), len(keys))
-			for i := 0; i < len(keys); i++ {
-				shrinkedKeys[i] = keys[i]
+			shrinkedKeys := make([]netlink.TcU32Key, len(keys))
+			copied := copy(shrinkedKeys, keys)
+			if copied != len(keys) {
+				return fmt.Errorf("copy tc u32 keys error, for subnet %s copied %d != keys %d", subnet, copied, len(keys))
 			}
 			keys = shrinkedKeys
 		}
@@ -319,12 +318,4 @@ func time2Tick(time uint32) uint32 {
 
 func buffer(rate uint64, burst uint32) uint32 {
 	return time2Tick(uint32(float64(burst) * float64(netlink.TIME_UNITS_PER_SEC) / float64(rate)))
-}
-
-func limit(rate uint64, latency float64, buffer uint32) uint32 {
-	return uint32(float64(rate)*latency/float64(netlink.TIME_UNITS_PER_SEC)) + buffer
-}
-
-func latencyInUsec(latencyInMillis float64) float64 {
-	return float64(netlink.TIME_UNITS_PER_SEC) * (latencyInMillis / 1000.0)
 }

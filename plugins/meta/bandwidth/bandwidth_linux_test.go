@@ -129,7 +129,7 @@ var _ = Describe("bandwidth test", func() {
 		ver := ver
 
 		Describe("cmdADD", func() {
-			It(fmt.Sprintf("[%s] works with a Veth pair wihtout any unbounded traffic", ver), func() {
+			It(fmt.Sprintf("[%s] works with a Veth pair without any unbounded traffic", ver), func() {
 				conf := fmt.Sprintf(`{
 					"cniVersion": "%s",
 					"name": "cni-plugin-bandwidth-test",
@@ -200,9 +200,9 @@ var _ = Describe("bandwidth test", func() {
 					// Uncapped class
 					Expect(classes[0]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
 					Expect(classes[0].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, 1)))
-					Expect(classes[0].(*netlink.HtbClass).Rate).To(Equal(uint64(UncappedRate)))
+					Expect(classes[0].(*netlink.HtbClass).Rate).To(Equal(UncappedRate))
 					Expect(classes[0].(*netlink.HtbClass).Buffer).To(Equal(uint32(0)))
-					Expect(classes[0].(*netlink.HtbClass).Ceil).To(Equal(uint64(UncappedRate)))
+					Expect(classes[0].(*netlink.HtbClass).Ceil).To(Equal(UncappedRate))
 					Expect(classes[0].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
 
 					// Class with traffic shapping settings
@@ -216,7 +216,7 @@ var _ = Describe("bandwidth test", func() {
 					// Since we do not exclude anything from egress traffic shapping, we should not find any filter
 					filters, err := netlink.FilterList(ifbLink, qdiscs[0].Attrs().Handle)
 					Expect(err).NotTo(HaveOccurred())
-					Expect(filters).To(HaveLen(0))
+					Expect(filters).To(BeEmpty())
 
 					hostVethLink, err := netlink.LinkByName(hostIfname)
 					Expect(err).NotTo(HaveOccurred())
@@ -253,9 +253,9 @@ var _ = Describe("bandwidth test", func() {
 					// Uncapped class
 					Expect(classes[0]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
 					Expect(classes[0].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, 1)))
-					Expect(classes[0].(*netlink.HtbClass).Rate).To(Equal(uint64(UncappedRate)))
+					Expect(classes[0].(*netlink.HtbClass).Rate).To(Equal(UncappedRate))
 					Expect(classes[0].(*netlink.HtbClass).Buffer).To(Equal(uint32(0)))
-					Expect(classes[0].(*netlink.HtbClass).Ceil).To(Equal(uint64(UncappedRate)))
+					Expect(classes[0].(*netlink.HtbClass).Ceil).To(Equal(UncappedRate))
 					Expect(classes[0].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
 
 					// Class with traffic shapping settings
@@ -269,12 +269,12 @@ var _ = Describe("bandwidth test", func() {
 					// Since we do not exclude anything from ingress traffic shapping, we should not find any filter
 					filters, err := netlink.FilterList(vethLink, qdiscs[0].Attrs().Handle)
 					Expect(err).NotTo(HaveOccurred())
-					Expect(filters).To(HaveLen(0))
+					Expect(filters).To(BeEmpty())
 					return nil
 				})).To(Succeed())
 			})
 
-			It(fmt.Sprintf("[%s] works with a Veth pair wiht some ipv4 and ipv6 unbounded traffic", ver), func() {
+			It(fmt.Sprintf("[%s] works with a Veth pair with some ipv4 and ipv6 unbounded traffic", ver), func() {
 				conf := fmt.Sprintf(`{
 				"cniVersion": "%s",
 				"name": "cni-plugin-bandwidth-test",
@@ -349,9 +349,9 @@ var _ = Describe("bandwidth test", func() {
 					// Uncapped class
 					Expect(classes[0]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
 					Expect(classes[0].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, 1)))
-					Expect(classes[0].(*netlink.HtbClass).Rate).To(Equal(uint64(UncappedRate)))
+					Expect(classes[0].(*netlink.HtbClass).Rate).To(Equal(UncappedRate))
 					Expect(classes[0].(*netlink.HtbClass).Buffer).To(Equal(uint32(0)))
-					Expect(classes[0].(*netlink.HtbClass).Ceil).To(Equal(uint64(UncappedRate)))
+					Expect(classes[0].(*netlink.HtbClass).Ceil).To(Equal(UncappedRate))
 					Expect(classes[0].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
 
 					// Class with traffic shapping settings
@@ -368,7 +368,7 @@ var _ = Describe("bandwidth test", func() {
 
 					// traffic to 10.0.0.0/8 redirected to uncapped class
 					Expect(filters[0]).To(BeAssignableToTypeOf(&netlink.U32{}))
-					Expect(filters[0].(*netlink.U32).Actions).To(HaveLen(0))
+					Expect(filters[0].(*netlink.U32).Actions).To(BeEmpty())
 					Expect(filters[0].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_ALL)))
 					Expect(filters[0].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
 					Expect(filters[0].Attrs().Priority).To(Equal(uint16(16)))
@@ -390,7 +390,7 @@ var _ = Describe("bandwidth test", func() {
 
 					// traffic to fd00:db8:abcd:1234:e000::/68 redirected to uncapped class
 					Expect(filters[1]).To(BeAssignableToTypeOf(&netlink.U32{}))
-					Expect(filters[1].(*netlink.U32).Actions).To(HaveLen(0))
+					Expect(filters[1].(*netlink.U32).Actions).To(BeEmpty())
 					Expect(filters[1].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_ALL)))
 					Expect(filters[1].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
 					Expect(filters[1].Attrs().Priority).To(Equal(uint16(16)))
@@ -455,9 +455,9 @@ var _ = Describe("bandwidth test", func() {
 					// Uncapped class
 					Expect(classes[0]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
 					Expect(classes[0].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, 1)))
-					Expect(classes[0].(*netlink.HtbClass).Rate).To(Equal(uint64(UncappedRate)))
+					Expect(classes[0].(*netlink.HtbClass).Rate).To(Equal(UncappedRate))
 					Expect(classes[0].(*netlink.HtbClass).Buffer).To(Equal(uint32(0)))
-					Expect(classes[0].(*netlink.HtbClass).Ceil).To(Equal(uint64(UncappedRate)))
+					Expect(classes[0].(*netlink.HtbClass).Ceil).To(Equal(UncappedRate))
 					Expect(classes[0].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
 
 					// Class with traffic shapping settings
@@ -474,7 +474,7 @@ var _ = Describe("bandwidth test", func() {
 
 					// traffic to 10.0.0.0/8 redirected to uncapped class
 					Expect(filters[0]).To(BeAssignableToTypeOf(&netlink.U32{}))
-					Expect(filters[0].(*netlink.U32).Actions).To(HaveLen(0))
+					Expect(filters[0].(*netlink.U32).Actions).To(BeEmpty())
 					Expect(filters[0].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_ALL)))
 					Expect(filters[0].Attrs().LinkIndex).To(Equal(vethLink.Attrs().Index))
 					Expect(filters[0].Attrs().Priority).To(Equal(uint16(16)))
@@ -496,7 +496,7 @@ var _ = Describe("bandwidth test", func() {
 
 					// traffic to fd00:db8:abcd:1234:e000::/68 redirected to uncapped class
 					Expect(filters[1]).To(BeAssignableToTypeOf(&netlink.U32{}))
-					Expect(filters[1].(*netlink.U32).Actions).To(HaveLen(0))
+					Expect(filters[1].(*netlink.U32).Actions).To(BeEmpty())
 					Expect(filters[1].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_ALL)))
 					Expect(filters[1].Attrs().LinkIndex).To(Equal(vethLink.Attrs().Index))
 					Expect(filters[1].Attrs().Priority).To(Equal(uint16(16)))
@@ -598,9 +598,9 @@ var _ = Describe("bandwidth test", func() {
 				// Uncapped class
 				Expect(classes[0]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
 				Expect(classes[0].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, 1)))
-				Expect(classes[0].(*netlink.HtbClass).Rate).To(Equal(uint64(UncappedRate)))
+				Expect(classes[0].(*netlink.HtbClass).Rate).To(Equal(UncappedRate))
 				Expect(classes[0].(*netlink.HtbClass).Buffer).To(Equal(uint32(0)))
-				Expect(classes[0].(*netlink.HtbClass).Ceil).To(Equal(uint64(UncappedRate)))
+				Expect(classes[0].(*netlink.HtbClass).Ceil).To(Equal(UncappedRate))
 				Expect(classes[0].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
 
 				// Class with traffic shapping settings
@@ -617,7 +617,7 @@ var _ = Describe("bandwidth test", func() {
 
 				// traffic to 10.0.0.0/8 redirected to uncapped class
 				Expect(filters[0]).To(BeAssignableToTypeOf(&netlink.U32{}))
-				Expect(filters[0].(*netlink.U32).Actions).To(HaveLen(0))
+				Expect(filters[0].(*netlink.U32).Actions).To(BeEmpty())
 				Expect(filters[0].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_ALL)))
 				Expect(filters[0].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
 				Expect(filters[0].Attrs().Priority).To(Equal(uint16(16)))
@@ -639,7 +639,7 @@ var _ = Describe("bandwidth test", func() {
 
 				// traffic to fd00:db8:abcd:1234:e000::/68 redirected to uncapped class
 				Expect(filters[1]).To(BeAssignableToTypeOf(&netlink.U32{}))
-				Expect(filters[1].(*netlink.U32).Actions).To(HaveLen(0))
+				Expect(filters[1].(*netlink.U32).Actions).To(BeEmpty())
 				Expect(filters[1].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_ALL)))
 				Expect(filters[1].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
 				Expect(filters[1].Attrs().Priority).To(Equal(uint16(16)))
@@ -776,9 +776,9 @@ var _ = Describe("bandwidth test", func() {
 				// Uncapped class
 				Expect(classes[0]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
 				Expect(classes[0].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, 1)))
-				Expect(classes[0].(*netlink.HtbClass).Rate).To(Equal(uint64(UncappedRate)))
+				Expect(classes[0].(*netlink.HtbClass).Rate).To(Equal(UncappedRate))
 				Expect(classes[0].(*netlink.HtbClass).Buffer).To(Equal(uint32(0)))
-				Expect(classes[0].(*netlink.HtbClass).Ceil).To(Equal(uint64(UncappedRate)))
+				Expect(classes[0].(*netlink.HtbClass).Ceil).To(Equal(UncappedRate))
 				Expect(classes[0].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
 
 				// Class with traffic shapping settings
@@ -792,12 +792,12 @@ var _ = Describe("bandwidth test", func() {
 				// No subnets are exluded in this example so we should not get any filter
 				filters, err := netlink.FilterList(containerIfLink, qdiscs[0].Attrs().Handle)
 				Expect(err).NotTo(HaveOccurred())
-				Expect(filters).To(HaveLen(0))
+				Expect(filters).To(BeEmpty())
 
 				// Just check no mirroring is setup
 				qdiscFilters, err := netlink.FilterList(containerIfLink, netlink.MakeHandle(0xffff, 0))
 				Expect(err).NotTo(HaveOccurred())
-				Expect(qdiscFilters).To(HaveLen(0))
+				Expect(qdiscFilters).To(BeEmpty())
 				return nil
 			})).To(Succeed())
 		})
@@ -973,9 +973,9 @@ var _ = Describe("bandwidth test", func() {
 				// Uncapped class
 				Expect(classes[0]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
 				Expect(classes[0].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, 1)))
-				Expect(classes[0].(*netlink.HtbClass).Rate).To(Equal(uint64(UncappedRate)))
+				Expect(classes[0].(*netlink.HtbClass).Rate).To(Equal(UncappedRate))
 				Expect(classes[0].(*netlink.HtbClass).Buffer).To(Equal(uint32(0)))
-				Expect(classes[0].(*netlink.HtbClass).Ceil).To(Equal(uint64(UncappedRate)))
+				Expect(classes[0].(*netlink.HtbClass).Ceil).To(Equal(UncappedRate))
 				Expect(classes[0].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
 
 				// Class with traffic shapping settings
@@ -992,7 +992,7 @@ var _ = Describe("bandwidth test", func() {
 
 				// traffic to 192.168.0.0/24 redirected to uncapped class
 				Expect(filters[0]).To(BeAssignableToTypeOf(&netlink.U32{}))
-				Expect(filters[0].(*netlink.U32).Actions).To(HaveLen(0))
+				Expect(filters[0].(*netlink.U32).Actions).To(BeEmpty())
 				Expect(filters[0].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_ALL)))
 				Expect(filters[0].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
 				Expect(filters[0].Attrs().Priority).To(Equal(uint16(16)))
@@ -1047,9 +1047,9 @@ var _ = Describe("bandwidth test", func() {
 				// Uncapped class
 				Expect(classes[0]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
 				Expect(classes[0].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, 1)))
-				Expect(classes[0].(*netlink.HtbClass).Rate).To(Equal(uint64(UncappedRate)))
+				Expect(classes[0].(*netlink.HtbClass).Rate).To(Equal(UncappedRate))
 				Expect(classes[0].(*netlink.HtbClass).Buffer).To(Equal(uint32(0)))
-				Expect(classes[0].(*netlink.HtbClass).Ceil).To(Equal(uint64(UncappedRate)))
+				Expect(classes[0].(*netlink.HtbClass).Ceil).To(Equal(UncappedRate))
 				Expect(classes[0].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
 
 				// Class with traffic shapping settings
@@ -1066,7 +1066,7 @@ var _ = Describe("bandwidth test", func() {
 
 				// traffic to 192.168.0.0/24 redirected to uncapped class
 				Expect(filters[0]).To(BeAssignableToTypeOf(&netlink.U32{}))
-				Expect(filters[0].(*netlink.U32).Actions).To(HaveLen(0))
+				Expect(filters[0].(*netlink.U32).Actions).To(BeEmpty())
 				Expect(filters[0].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_ALL)))
 				Expect(filters[0].Attrs().LinkIndex).To(Equal(vethLink.Attrs().Index))
 				Expect(filters[0].Attrs().Priority).To(Equal(uint16(16)))
@@ -1170,9 +1170,9 @@ var _ = Describe("bandwidth test", func() {
 				// Uncapped class
 				Expect(classes[0]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
 				Expect(classes[0].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, 1)))
-				Expect(classes[0].(*netlink.HtbClass).Rate).To(Equal(uint64(UncappedRate)))
+				Expect(classes[0].(*netlink.HtbClass).Rate).To(Equal(UncappedRate))
 				Expect(classes[0].(*netlink.HtbClass).Buffer).To(Equal(uint32(0)))
-				Expect(classes[0].(*netlink.HtbClass).Ceil).To(Equal(uint64(UncappedRate)))
+				Expect(classes[0].(*netlink.HtbClass).Ceil).To(Equal(UncappedRate))
 				Expect(classes[0].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
 
 				// Class with traffic shapping settings
@@ -1189,7 +1189,7 @@ var _ = Describe("bandwidth test", func() {
 
 				// traffic to 192.168.0.0/24 redirected to uncapped class
 				Expect(filters[0]).To(BeAssignableToTypeOf(&netlink.U32{}))
-				Expect(filters[0].(*netlink.U32).Actions).To(HaveLen(0))
+				Expect(filters[0].(*netlink.U32).Actions).To(BeEmpty())
 				Expect(filters[0].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_ALL)))
 				Expect(filters[0].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
 				Expect(filters[0].Attrs().Priority).To(Equal(uint16(16)))
@@ -1519,9 +1519,9 @@ var _ = Describe("bandwidth test", func() {
 					// Uncapped class
 					Expect(classes[0]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
 					Expect(classes[0].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, 1)))
-					Expect(classes[0].(*netlink.HtbClass).Rate).To(Equal(uint64(UncappedRate)))
+					Expect(classes[0].(*netlink.HtbClass).Rate).To(Equal(UncappedRate))
 					Expect(classes[0].(*netlink.HtbClass).Buffer).To(Equal(uint32(0)))
-					Expect(classes[0].(*netlink.HtbClass).Ceil).To(Equal(uint64(UncappedRate)))
+					Expect(classes[0].(*netlink.HtbClass).Ceil).To(Equal(UncappedRate))
 					Expect(classes[0].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
 
 					// Class with traffic shapping settings
@@ -1535,7 +1535,7 @@ var _ = Describe("bandwidth test", func() {
 					// Since we do not exclude anything from egress traffic shapping, we should not find any filter
 					filters, err := netlink.FilterList(ifbLink, qdiscs[0].Attrs().Handle)
 					Expect(err).NotTo(HaveOccurred())
-					Expect(filters).To(HaveLen(0))
+					Expect(filters).To(BeEmpty())
 
 					hostVethLink, err := netlink.LinkByName(hostIfname)
 					Expect(err).NotTo(HaveOccurred())
@@ -1571,9 +1571,9 @@ var _ = Describe("bandwidth test", func() {
 					// Uncapped class
 					Expect(classes[0]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
 					Expect(classes[0].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, 1)))
-					Expect(classes[0].(*netlink.HtbClass).Rate).To(Equal(uint64(UncappedRate)))
+					Expect(classes[0].(*netlink.HtbClass).Rate).To(Equal(UncappedRate))
 					Expect(classes[0].(*netlink.HtbClass).Buffer).To(Equal(uint32(0)))
-					Expect(classes[0].(*netlink.HtbClass).Ceil).To(Equal(uint64(UncappedRate)))
+					Expect(classes[0].(*netlink.HtbClass).Ceil).To(Equal(UncappedRate))
 					Expect(classes[0].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
 
 					// Class with traffic shapping settings
@@ -1587,7 +1587,7 @@ var _ = Describe("bandwidth test", func() {
 					// Since we do not exclude anything from ingress traffic shapping, we should not find any filter
 					filters, err := netlink.FilterList(vethLink, qdiscs[0].Attrs().Handle)
 					Expect(err).NotTo(HaveOccurred())
-					Expect(filters).To(HaveLen(0))
+					Expect(filters).To(BeEmpty())
 
 					return nil
 				})).To(Succeed())
@@ -1733,7 +1733,6 @@ var _ = Describe("bandwidth test", func() {
 		})
 
 		Describe(fmt.Sprintf("[%s] QoS effective", ver), func() {
-
 			Context(fmt.Sprintf("[%s] when chaining bandwidth plugin with PTP", ver), func() {
 				var ptpConf string
 				var rateInBits uint64
@@ -1934,5 +1933,4 @@ var _ = Describe("bandwidth test", func() {
 			Expect(err).NotTo(HaveOccurred())
 		})
 	})
-
 })

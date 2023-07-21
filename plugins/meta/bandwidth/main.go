@@ -104,7 +104,7 @@ func getBandwidth(conf *PluginConf) *BandwidthEntry {
 	}
 
 	if bw != nil && bw.NonShapedSubnets == nil {
-		bw.NonShapedSubnets = make([]string, 0, 0)
+		bw.NonShapedSubnets = make([]string, 0)
 	}
 
 	return bw
@@ -168,12 +168,10 @@ func getHostInterface(interfaces []*current.Interface, containerIfName string, n
 }
 
 func validateSubnets(subnets []string) error {
-	if subnets != nil {
-		for _, subnet := range subnets {
-			_, _, err := net.ParseCIDR(subnet)
-			if err != nil {
-				return fmt.Errorf("bad subnet provided %s, details %s", subnet, err)
-			}
+	for _, subnet := range subnets {
+		_, _, err := net.ParseCIDR(subnet)
+		if err != nil {
+			return fmt.Errorf("bad subnet provided %s, details %s", subnet, err)
 		}
 	}
 	return nil
