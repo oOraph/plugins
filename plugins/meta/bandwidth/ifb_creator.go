@@ -213,12 +213,15 @@ func createHTB(rateInBits, burstInBits uint64, linkIndex int, excludeSubnets []s
 
 		isIpv4 := nw.IP.To4() != nil
 		protocol := syscall.ETH_P_IPV6
+		var prio uint16 = 15
 		var offset int32 = 24
 		keepBytes := 16
 		if isIpv4 {
 			protocol = syscall.ETH_P_IP
 			offset = 16
 			keepBytes = 4
+			// prio/pref needs to be changed if we change the protocol, looks like we cannot mix protocols with the same pref
+			prio = 16
 
 		}
 
@@ -297,7 +300,7 @@ func createHTB(rateInBits, burstInBits uint64, linkIndex int, excludeSubnets []s
 			FilterAttrs: netlink.FilterAttrs{
 				LinkIndex: linkIndex,
 				Parent:    qdisc.Handle,
-				Priority:  16,
+				Priority:  prio,
 				Protocol:  uint16(protocol),
 			},
 			ClassId: uncappedClass.Handle,
