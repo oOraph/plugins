@@ -212,17 +212,17 @@ func createHTB(rateInBits, burstInBits uint64, linkIndex int, excludeSubnets []s
 		}
 
 		isIpv4 := nw.IP.To4() != nil
-		// protocol := syscall.ETH_P_IPV6
+		protocol := syscall.ETH_P_IPV6
 		var offset int32 = 24
 		keepBytes := 16
 		if isIpv4 {
-			// protocol = syscall.ETH_P_IP
+			protocol = syscall.ETH_P_IP
 			offset = 16
 			keepBytes = 4
 
 		}
 
-		protocol := syscall.ETH_P_ALL
+		// protocol := syscall.ETH_P_ALL
 
 		if len(maskBytes) < keepBytes {
 			return fmt.Errorf("error with net lib, unexpected count of bytes for ipv4 mask (%d < %d)",
