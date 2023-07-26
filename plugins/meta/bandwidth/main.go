@@ -171,7 +171,7 @@ func validateSubnets(subnets []string) error {
 	for _, subnet := range subnets {
 		_, _, err := net.ParseCIDR(subnet)
 		if err != nil {
-			return fmt.Errorf("bad subnet provided %s, details %s", subnet, err)
+			return fmt.Errorf("bad subnet %q provided, details %s", subnet, err)
 		}
 	}
 	return nil
@@ -188,8 +188,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 		return types.PrintResult(conf.PrevResult, conf.CNIVersion)
 	}
 
-	err = validateSubnets(bandwidth.NonShapedSubnets)
-	if err != nil {
+	if err = validateSubnets(bandwidth.NonShapedSubnets); err != nil {
 		return err
 	}
 
