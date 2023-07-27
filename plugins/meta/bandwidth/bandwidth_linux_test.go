@@ -369,7 +369,7 @@ var _ = Describe("bandwidth test", func() {
 					// traffic to 10.0.0.0/8 redirected to uncapped class
 					Expect(filters[0]).To(BeAssignableToTypeOf(&netlink.U32{}))
 					Expect(filters[0].(*netlink.U32).Actions).To(BeEmpty())
-					Expect(filters[0].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_ALL)))
+					Expect(filters[0].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_IP)))
 					Expect(filters[0].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
 					Expect(filters[0].Attrs().Priority).To(Equal(uint16(16)))
 					Expect(filters[0].Attrs().Parent).To(Equal(qdiscs[0].Attrs().Handle))
@@ -391,9 +391,9 @@ var _ = Describe("bandwidth test", func() {
 					// traffic to fd00:db8:abcd:1234:e000::/68 redirected to uncapped class
 					Expect(filters[1]).To(BeAssignableToTypeOf(&netlink.U32{}))
 					Expect(filters[1].(*netlink.U32).Actions).To(BeEmpty())
-					Expect(filters[1].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_ALL)))
+					Expect(filters[1].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_IPV6)))
 					Expect(filters[1].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
-					Expect(filters[1].Attrs().Priority).To(Equal(uint16(16)))
+					Expect(filters[1].Attrs().Priority).To(Equal(uint16(15)))
 					Expect(filters[1].Attrs().Parent).To(Equal(qdiscs[0].Attrs().Handle))
 					Expect(filters[1].(*netlink.U32).ClassId).To(Equal(netlink.MakeHandle(1, 1)))
 
@@ -475,7 +475,7 @@ var _ = Describe("bandwidth test", func() {
 					// traffic to 10.0.0.0/8 redirected to uncapped class
 					Expect(filters[0]).To(BeAssignableToTypeOf(&netlink.U32{}))
 					Expect(filters[0].(*netlink.U32).Actions).To(BeEmpty())
-					Expect(filters[0].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_ALL)))
+					Expect(filters[0].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_IP)))
 					Expect(filters[0].Attrs().LinkIndex).To(Equal(vethLink.Attrs().Index))
 					Expect(filters[0].Attrs().Priority).To(Equal(uint16(16)))
 					Expect(filters[0].Attrs().Parent).To(Equal(qdiscs[0].Attrs().Handle))
@@ -497,9 +497,9 @@ var _ = Describe("bandwidth test", func() {
 					// traffic to fd00:db8:abcd:1234:e000::/68 redirected to uncapped class
 					Expect(filters[1]).To(BeAssignableToTypeOf(&netlink.U32{}))
 					Expect(filters[1].(*netlink.U32).Actions).To(BeEmpty())
-					Expect(filters[1].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_ALL)))
+					Expect(filters[1].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_IPV6)))
 					Expect(filters[1].Attrs().LinkIndex).To(Equal(vethLink.Attrs().Index))
-					Expect(filters[1].Attrs().Priority).To(Equal(uint16(16)))
+					Expect(filters[1].Attrs().Priority).To(Equal(uint16(15)))
 					Expect(filters[1].Attrs().Parent).To(Equal(qdiscs[0].Attrs().Handle))
 					Expect(filters[1].(*netlink.U32).ClassId).To(Equal(netlink.MakeHandle(1, 1)))
 
@@ -618,7 +618,7 @@ var _ = Describe("bandwidth test", func() {
 				// traffic to 10.0.0.0/8 redirected to uncapped class
 				Expect(filters[0]).To(BeAssignableToTypeOf(&netlink.U32{}))
 				Expect(filters[0].(*netlink.U32).Actions).To(BeEmpty())
-				Expect(filters[0].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_ALL)))
+				Expect(filters[0].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_IP)))
 				Expect(filters[0].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
 				Expect(filters[0].Attrs().Priority).To(Equal(uint16(16)))
 				Expect(filters[0].Attrs().Parent).To(Equal(qdiscs[0].Attrs().Handle))
@@ -640,9 +640,9 @@ var _ = Describe("bandwidth test", func() {
 				// traffic to fd00:db8:abcd:1234:e000::/68 redirected to uncapped class
 				Expect(filters[1]).To(BeAssignableToTypeOf(&netlink.U32{}))
 				Expect(filters[1].(*netlink.U32).Actions).To(BeEmpty())
-				Expect(filters[1].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_ALL)))
+				Expect(filters[1].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_IPV6)))
 				Expect(filters[1].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
-				Expect(filters[1].Attrs().Priority).To(Equal(uint16(16)))
+				Expect(filters[1].Attrs().Priority).To(Equal(uint16(15)))
 				Expect(filters[1].Attrs().Parent).To(Equal(qdiscs[0].Attrs().Handle))
 				Expect(filters[1].(*netlink.U32).ClassId).To(Equal(netlink.MakeHandle(1, 1)))
 
@@ -993,7 +993,7 @@ var _ = Describe("bandwidth test", func() {
 				// traffic to 192.168.0.0/24 redirected to uncapped class
 				Expect(filters[0]).To(BeAssignableToTypeOf(&netlink.U32{}))
 				Expect(filters[0].(*netlink.U32).Actions).To(BeEmpty())
-				Expect(filters[0].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_ALL)))
+				Expect(filters[0].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_IP)))
 				Expect(filters[0].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
 				Expect(filters[0].Attrs().Priority).To(Equal(uint16(16)))
 				Expect(filters[0].Attrs().Parent).To(Equal(qdiscs[0].Attrs().Handle))
@@ -1067,7 +1067,7 @@ var _ = Describe("bandwidth test", func() {
 				// traffic to 192.168.0.0/24 redirected to uncapped class
 				Expect(filters[0]).To(BeAssignableToTypeOf(&netlink.U32{}))
 				Expect(filters[0].(*netlink.U32).Actions).To(BeEmpty())
-				Expect(filters[0].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_ALL)))
+				Expect(filters[0].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_IP)))
 				Expect(filters[0].Attrs().LinkIndex).To(Equal(vethLink.Attrs().Index))
 				Expect(filters[0].Attrs().Priority).To(Equal(uint16(16)))
 				Expect(filters[0].Attrs().Parent).To(Equal(qdiscs[0].Attrs().Handle))
@@ -1190,7 +1190,7 @@ var _ = Describe("bandwidth test", func() {
 				// traffic to 192.168.0.0/24 redirected to uncapped class
 				Expect(filters[0]).To(BeAssignableToTypeOf(&netlink.U32{}))
 				Expect(filters[0].(*netlink.U32).Actions).To(BeEmpty())
-				Expect(filters[0].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_ALL)))
+				Expect(filters[0].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_IP)))
 				Expect(filters[0].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
 				Expect(filters[0].Attrs().Priority).To(Equal(uint16(16)))
 				Expect(filters[0].Attrs().Parent).To(Equal(qdiscs[0].Attrs().Handle))
