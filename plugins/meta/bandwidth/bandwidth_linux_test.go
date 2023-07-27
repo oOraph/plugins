@@ -615,38 +615,16 @@ var _ = Describe("bandwidth test", func() {
 				Expect(err).NotTo(HaveOccurred())
 				Expect(filters).To(HaveLen(2))
 
-				// traffic to 10.0.0.0/8 redirected to uncapped class
+				// traffic to fd00:db8:abcd:1234:e000::/68 redirected to uncapped class
 				Expect(filters[0]).To(BeAssignableToTypeOf(&netlink.U32{}))
 				Expect(filters[0].(*netlink.U32).Actions).To(BeEmpty())
-				Expect(filters[0].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_IP)))
+				Expect(filters[0].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_IPV6)))
 				Expect(filters[0].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
-				Expect(filters[0].Attrs().Priority).To(Equal(uint16(16)))
+				Expect(filters[0].Attrs().Priority).To(Equal(uint16(15)))
 				Expect(filters[0].Attrs().Parent).To(Equal(qdiscs[0].Attrs().Handle))
 				Expect(filters[0].(*netlink.U32).ClassId).To(Equal(netlink.MakeHandle(1, 1)))
 
 				filterSel := filters[0].(*netlink.U32).Sel
-				Expect(filterSel).To(BeAssignableToTypeOf(&netlink.TcU32Sel{}))
-				Expect(filterSel.Flags).To(Equal(uint8(netlink.TC_U32_TERMINAL)))
-				Expect(filterSel.Keys).To(HaveLen(1))
-				Expect(filterSel.Nkeys).To(Equal(uint8(1)))
-
-				// The filter should match to 10.0.0.0/8 dst address in other words it should be:
-				// match 0a000000/ff000000 at 16
-				selKey := filterSel.Keys[0]
-				Expect(selKey.Val).To(Equal(uint32(10 * math.Pow(256, 3))))
-				Expect(selKey.Off).To(Equal(int32(16)))
-				Expect(selKey.Mask).To(Equal(uint32(255 * math.Pow(256, 3))))
-
-				// traffic to fd00:db8:abcd:1234:e000::/68 redirected to uncapped class
-				Expect(filters[1]).To(BeAssignableToTypeOf(&netlink.U32{}))
-				Expect(filters[1].(*netlink.U32).Actions).To(BeEmpty())
-				Expect(filters[1].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_IPV6)))
-				Expect(filters[1].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
-				Expect(filters[1].Attrs().Priority).To(Equal(uint16(15)))
-				Expect(filters[1].Attrs().Parent).To(Equal(qdiscs[0].Attrs().Handle))
-				Expect(filters[1].(*netlink.U32).ClassId).To(Equal(netlink.MakeHandle(1, 1)))
-
-				filterSel = filters[1].(*netlink.U32).Sel
 				Expect(filterSel).To(BeAssignableToTypeOf(&netlink.TcU32Sel{}))
 				Expect(filterSel.Flags).To(Equal(uint8(netlink.TC_U32_TERMINAL)))
 				Expect(filterSel.Keys).To(HaveLen(3))
@@ -668,6 +646,28 @@ var _ = Describe("bandwidth test", func() {
 				Expect(filterSel.Keys[2].Off).To(Equal(int32(32)))
 				Expect(filterSel.Keys[2].Val).To(Equal(uint32(3758096384)))
 				Expect(filterSel.Keys[2].Mask).To(Equal(uint32(4026531840)))
+
+				// traffic to 10.0.0.0/8 redirected to uncapped class
+				Expect(filters[1]).To(BeAssignableToTypeOf(&netlink.U32{}))
+				Expect(filters[1].(*netlink.U32).Actions).To(BeEmpty())
+				Expect(filters[1].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_IP)))
+				Expect(filters[1].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
+				Expect(filters[1].Attrs().Priority).To(Equal(uint16(16)))
+				Expect(filters[1].Attrs().Parent).To(Equal(qdiscs[0].Attrs().Handle))
+				Expect(filters[1].(*netlink.U32).ClassId).To(Equal(netlink.MakeHandle(1, 1)))
+
+				filterSel = filters[1].(*netlink.U32).Sel
+				Expect(filterSel).To(BeAssignableToTypeOf(&netlink.TcU32Sel{}))
+				Expect(filterSel.Flags).To(Equal(uint8(netlink.TC_U32_TERMINAL)))
+				Expect(filterSel.Keys).To(HaveLen(1))
+				Expect(filterSel.Nkeys).To(Equal(uint8(1)))
+
+				// The filter should match to 10.0.0.0/8 dst address in other words it should be:
+				// match 0a000000/ff000000 at 16
+				selKey := filterSel.Keys[0]
+				Expect(selKey.Val).To(Equal(uint32(10 * math.Pow(256, 3))))
+				Expect(selKey.Off).To(Equal(int32(16)))
+				Expect(selKey.Mask).To(Equal(uint32(255 * math.Pow(256, 3))))
 
 				// check traffic mirroring from veth to ifb
 				hostVethLink, err := netlink.LinkByName(hostIfname)
