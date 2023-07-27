@@ -375,7 +375,7 @@ var _ = Describe("bandwidth test", func() {
 					Expect(filters[0].Attrs().Parent).To(Equal(qdiscs[0].Attrs().Handle))
 					Expect(filters[0].(*netlink.U32).ClassId).To(Equal(netlink.MakeHandle(1, 1)))
 
-					filterSel := filters[1].(*netlink.U32).Sel
+					filterSel := filters[0].(*netlink.U32).Sel
 					Expect(filterSel).To(BeAssignableToTypeOf(&netlink.TcU32Sel{}))
 					Expect(filterSel.Flags).To(Equal(uint8(netlink.TC_U32_TERMINAL)))
 					Expect(filterSel.Keys).To(HaveLen(3))
@@ -407,7 +407,7 @@ var _ = Describe("bandwidth test", func() {
 					Expect(filters[1].Attrs().Parent).To(Equal(qdiscs[0].Attrs().Handle))
 					Expect(filters[1].(*netlink.U32).ClassId).To(Equal(netlink.MakeHandle(1, 1)))
 
-					filterSel = filters[0].(*netlink.U32).Sel
+					filterSel = filters[1].(*netlink.U32).Sel
 					Expect(filterSel).To(BeAssignableToTypeOf(&netlink.TcU32Sel{}))
 					Expect(filterSel.Flags).To(Equal(uint8(netlink.TC_U32_TERMINAL)))
 					Expect(filterSel.Keys).To(HaveLen(1))
