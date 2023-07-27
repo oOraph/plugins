@@ -173,7 +173,6 @@ func getHostInterface(interfaces []*current.Interface, containerIfName string, n
 }
 
 func validateSubnets(unshapedSubnets []string, shapedSubnets []string) error {
-
 	if len(unshapedSubnets) > 0 && len(shapedSubnets) > 0 {
 		return fmt.Errorf("unshapedSubnets and shapedSubnets cannot be both specified, one of them should be discarded")
 	}
