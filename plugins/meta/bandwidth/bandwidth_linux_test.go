@@ -1932,5 +1932,20 @@ var _ = Describe("bandwidth test", func() {
 			err = validateRateAndBurst(0, 0)
 			Expect(err).NotTo(HaveOccurred())
 		})
+
+		It("Should fail if both ShapedSubnets and UnshapedSubnets are specified", func() {
+			err := validateSubnets([]string{"10.0.0.0/8"}, []string{"192.168.0.0/24"})
+			Expect(err).To(HaveOccurred())
+		})
+
+		It("Should fail if specified UnshapedSubnets are not valid CIDRs", func() {
+			err := validateSubnets([]string{"10.0.0.0/8", "hello"}, []string{})
+			Expect(err).To(HaveOccurred())
+		})
+
+		It("Should fail if specified ShapedSubnets are not valid CIDRs", func() {
+			err := validateSubnets([]string{}, []string{"10.0.0.0/8", "hello"})
+			Expect(err).To(HaveOccurred())
+		})
 	})
 })
