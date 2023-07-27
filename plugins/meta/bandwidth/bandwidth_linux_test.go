@@ -190,7 +190,7 @@ var _ = Describe("bandwidth test", func() {
 					Expect(qdiscs).To(HaveLen(1))
 					Expect(qdiscs[0].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
 					Expect(qdiscs[0]).To(BeAssignableToTypeOf(&netlink.Htb{}))
-					Expect(qdiscs[0].(*netlink.Htb).Defcls).To(Equal(uint32(DefaultClassMinorID)))
+					Expect(qdiscs[0].(*netlink.Htb).Defcls).To(Equal(uint32(ShapedClassMinorID)))
 
 					classes, err := netlink.ClassList(ifbLink, qdiscs[0].Attrs().Handle)
 
@@ -243,7 +243,7 @@ var _ = Describe("bandwidth test", func() {
 					Expect(qdiscs).To(HaveLen(2))
 					Expect(qdiscs[0].Attrs().LinkIndex).To(Equal(vethLink.Attrs().Index))
 					Expect(qdiscs[0]).To(BeAssignableToTypeOf(&netlink.Htb{}))
-					Expect(qdiscs[0].(*netlink.Htb).Defcls).To(Equal(uint32(DefaultClassMinorID)))
+					Expect(qdiscs[0].(*netlink.Htb).Defcls).To(Equal(uint32(ShapedClassMinorID)))
 
 					classes, err := netlink.ClassList(vethLink, qdiscs[0].Attrs().Handle)
 
@@ -339,7 +339,7 @@ var _ = Describe("bandwidth test", func() {
 					Expect(qdiscs).To(HaveLen(1))
 					Expect(qdiscs[0].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
 					Expect(qdiscs[0]).To(BeAssignableToTypeOf(&netlink.Htb{}))
-					Expect(qdiscs[0].(*netlink.Htb).Defcls).To(Equal(uint32(DefaultClassMinorID)))
+					Expect(qdiscs[0].(*netlink.Htb).Defcls).To(Equal(uint32(ShapedClassMinorID)))
 
 					classes, err := netlink.ClassList(ifbLink, qdiscs[0].Attrs().Handle)
 
@@ -445,7 +445,7 @@ var _ = Describe("bandwidth test", func() {
 					Expect(qdiscs).To(HaveLen(2))
 					Expect(qdiscs[0].Attrs().LinkIndex).To(Equal(vethLink.Attrs().Index))
 					Expect(qdiscs[0]).To(BeAssignableToTypeOf(&netlink.Htb{}))
-					Expect(qdiscs[0].(*netlink.Htb).Defcls).To(Equal(uint32(DefaultClassMinorID)))
+					Expect(qdiscs[0].(*netlink.Htb).Defcls).To(Equal(uint32(ShapedClassMinorID)))
 
 					classes, err := netlink.ClassList(vethLink, qdiscs[0].Attrs().Handle)
 
@@ -590,7 +590,7 @@ var _ = Describe("bandwidth test", func() {
 				Expect(qdiscs).To(HaveLen(1))
 				Expect(qdiscs[0].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
 				Expect(qdiscs[0]).To(BeAssignableToTypeOf(&netlink.Htb{}))
-				Expect(qdiscs[0].(*netlink.Htb).Defcls).To(Equal(uint32(DefaultClassMinorID)))
+				Expect(qdiscs[0].(*netlink.Htb).Defcls).To(Equal(uint32(ShapedClassMinorID)))
 				classes, err := netlink.ClassList(ifbLink, qdiscs[0].Attrs().Handle)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(classes).To(HaveLen(2))
@@ -605,7 +605,7 @@ var _ = Describe("bandwidth test", func() {
 
 				// Class with traffic shapping settings
 				Expect(classes[1]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
-				Expect(classes[1].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, uint16(DefaultClassMinorID))))
+				Expect(classes[1].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, uint16(ShapedClassMinorID))))
 				Expect(classes[1].(*netlink.HtbClass).Rate).To(Equal(uint64(1000)))
 				// Expect(classes[1].(*netlink.HtbClass).Buffer).To(Equal(uint32(7812500)))
 				Expect(classes[1].(*netlink.HtbClass).Ceil).To(Equal(uint64(2000)))
@@ -766,7 +766,7 @@ var _ = Describe("bandwidth test", func() {
 				Expect(qdiscs).To(HaveLen(1))
 				Expect(qdiscs[0].Attrs().LinkIndex).To(Equal(containerIfLink.Attrs().Index))
 				Expect(qdiscs[0]).To(BeAssignableToTypeOf(&netlink.Htb{}))
-				Expect(qdiscs[0].(*netlink.Htb).Defcls).To(Equal(uint32(DefaultClassMinorID)))
+				Expect(qdiscs[0].(*netlink.Htb).Defcls).To(Equal(uint32(ShapedClassMinorID)))
 
 				classes, err := netlink.ClassList(containerIfLink, qdiscs[0].Attrs().Handle)
 
@@ -963,7 +963,7 @@ var _ = Describe("bandwidth test", func() {
 				Expect(qdiscs).To(HaveLen(1))
 				Expect(qdiscs[0].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
 				Expect(qdiscs[0]).To(BeAssignableToTypeOf(&netlink.Htb{}))
-				Expect(qdiscs[0].(*netlink.Htb).Defcls).To(Equal(uint32(DefaultClassMinorID)))
+				Expect(qdiscs[0].(*netlink.Htb).Defcls).To(Equal(uint32(ShapedClassMinorID)))
 
 				classes, err := netlink.ClassList(ifbLink, qdiscs[0].Attrs().Handle)
 
@@ -1037,7 +1037,7 @@ var _ = Describe("bandwidth test", func() {
 				Expect(qdiscs).To(HaveLen(2))
 				Expect(qdiscs[0].Attrs().LinkIndex).To(Equal(vethLink.Attrs().Index))
 				Expect(qdiscs[0]).To(BeAssignableToTypeOf(&netlink.Htb{}))
-				Expect(qdiscs[0].(*netlink.Htb).Defcls).To(Equal(uint32(DefaultClassMinorID)))
+				Expect(qdiscs[0].(*netlink.Htb).Defcls).To(Equal(uint32(ShapedClassMinorID)))
 
 				classes, err := netlink.ClassList(vethLink, qdiscs[0].Attrs().Handle)
 
@@ -1160,7 +1160,7 @@ var _ = Describe("bandwidth test", func() {
 				Expect(qdiscs).To(HaveLen(1))
 				Expect(qdiscs[0].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
 				Expect(qdiscs[0]).To(BeAssignableToTypeOf(&netlink.Htb{}))
-				Expect(qdiscs[0].(*netlink.Htb).Defcls).To(Equal(uint32(DefaultClassMinorID)))
+				Expect(qdiscs[0].(*netlink.Htb).Defcls).To(Equal(uint32(ShapedClassMinorID)))
 
 				classes, err := netlink.ClassList(ifbLink, qdiscs[0].Attrs().Handle)
 
@@ -1509,7 +1509,7 @@ var _ = Describe("bandwidth test", func() {
 					Expect(qdiscs).To(HaveLen(1))
 					Expect(qdiscs[0].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
 					Expect(qdiscs[0]).To(BeAssignableToTypeOf(&netlink.Htb{}))
-					Expect(qdiscs[0].(*netlink.Htb).Defcls).To(Equal(uint32(DefaultClassMinorID)))
+					Expect(qdiscs[0].(*netlink.Htb).Defcls).To(Equal(uint32(ShapedClassMinorID)))
 
 					classes, err := netlink.ClassList(ifbLink, qdiscs[0].Attrs().Handle)
 
@@ -1561,7 +1561,7 @@ var _ = Describe("bandwidth test", func() {
 					Expect(qdiscs).To(HaveLen(2))
 					Expect(qdiscs[0].Attrs().LinkIndex).To(Equal(vethLink.Attrs().Index))
 					Expect(qdiscs[0]).To(BeAssignableToTypeOf(&netlink.Htb{}))
-					Expect(qdiscs[0].(*netlink.Htb).Defcls).To(Equal(uint32(DefaultClassMinorID)))
+					Expect(qdiscs[0].(*netlink.Htb).Defcls).To(Equal(uint32(ShapedClassMinorID)))
 
 					classes, err := netlink.ClassList(vethLink, qdiscs[0].Attrs().Handle)
 
