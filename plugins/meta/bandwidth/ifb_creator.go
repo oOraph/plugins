@@ -225,8 +225,6 @@ func createHTB(rateInBits, burstInBits uint64, linkIndex int, excludeSubnets []s
 
 		}
 
-		// protocol := syscall.ETH_P_ALL
-
 		if len(maskBytes) < keepBytes {
 			return fmt.Errorf("error with net lib, unexpected count of bytes for ipv4 mask (%d < %d)",
 				len(maskBytes), keepBytes)

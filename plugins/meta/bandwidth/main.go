@@ -40,7 +40,7 @@ const (
 // BandwidthEntry corresponds to a single entry in the bandwidth argument,
 // see CONVENTIONS.md
 type BandwidthEntry struct {
-	NonShapedSubnets []string `json:"nonShapedSubnets"` // Ipv4/ipv6 subnets to be excluded from traffic shaping
+	UnshapedSubnets []string `json:"unshapedSubnets"` // Ipv4/ipv6 subnets to be excluded from traffic shaping
 	IngressRate      uint64   `json:"ingressRate"`      // Bandwidth rate in bps for traffic through container. 0 for no limit. If ingressRate is set, ingressBurst must also be set
 	IngressBurst     uint64   `json:"ingressBurst"`     // Bandwidth burst in bits for traffic through container. 0 for no limit. If ingressBurst is set, ingressRate must also be set
 
@@ -103,8 +103,8 @@ func getBandwidth(conf *PluginConf) *BandwidthEntry {
 		bw = conf.RuntimeConfig.Bandwidth
 	}
 
-	if bw != nil && bw.NonShapedSubnets == nil {
-		bw.NonShapedSubnets = make([]string, 0)
+	if bw != nil && bw.UnshapedSubnets == nil {
+		bw.UnshapedSubnets = make([]string, 0)
 	}
 
 	return bw
@@ -188,7 +188,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 		return types.PrintResult(conf.PrevResult, conf.CNIVersion)
 	}
 
-	if err = validateSubnets(bandwidth.NonShapedSubnets); err != nil {
+	if err = validateSubnets(bandwidth.UnshapedSubnets); err != nil {
 		return err
 	}
 
@@ -214,7 +214,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 
 	if bandwidth.IngressRate > 0 && bandwidth.IngressBurst > 0 {
 		err = CreateIngressQdisc(bandwidth.IngressRate, bandwidth.IngressBurst,
-			bandwidth.NonShapedSubnets, hostInterface.Name)
+			bandwidth.UnshapedSubnets, hostInterface.Name)
 		if err != nil {
 			return err
 		}
@@ -243,7 +243,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 			Mac:  ifbDevice.Attrs().HardwareAddr.String(),
 		})
 		err = CreateEgressQdisc(bandwidth.EgressRate, bandwidth.EgressBurst,
-			bandwidth.NonShapedSubnets, hostInterface.Name, ifbDeviceName)
+			bandwidth.UnshapedSubnets, hostInterface.Name, ifbDeviceName)
 		if err != nil {
 			return err
 		}
@@ -316,7 +316,7 @@ func cmdCheck(args *skel.CmdArgs) error {
 
 	bandwidth := getBandwidth(bwConf)
 
-	err = validateSubnets(bandwidth.NonShapedSubnets)
+	err = validateSubnets(bandwidth.UnshapedSubnets)
 	if err != nil {
 		return fmt.Errorf("failed to check subnets, details %s", err)
 	}
@@ -405,7 +405,7 @@ func checkHTB(link netlink.Link, rateInBytes uint64, bufferInBytes uint32) error
 		}
 
 		// TODO: check non shaped subnet filters
-		// if bandwidth.NonShapedSubnets {
+		// if bandwidth.UnshapedSubnets {
 		// 	filters, err := netlink.FilterList(link, htb.Handle)
 		// }
 	}

@@ -283,7 +283,7 @@ var _ = Describe("bandwidth test", func() {
 				"ingressBurst": 8,
 				"egressRate": 16,
 				"egressBurst": 12,
-				"nonShapedSubnets": [
+				"unshapedSubnets": [
 					"10.0.0.0/8",
 					"fd00:db8:abcd:1234:e000::/68"
 				],
@@ -540,7 +540,7 @@ var _ = Describe("bandwidth test", func() {
 			"ingressBurst": 0,
 			"egressRate": 8000,
 			"egressBurst": 80,
-			"nonShapedSubnets": [
+			"unshapedSubnets": [
 					"10.0.0.0/8",
 					"fd00:db8:abcd:1234:e000::/68"
 			],
@@ -909,7 +909,7 @@ var _ = Describe("bandwidth test", func() {
 					"ingressBurst": 8,
 					"egressRate": 16,
 					"egressBurst": 9,
-					"nonShapedSubnets": ["192.168.0.0/24"]
+					"unshapedSubnets": ["192.168.0.0/24"]
 				}
 			},
 			"prevResult": {
@@ -1099,14 +1099,14 @@ var _ = Describe("bandwidth test", func() {
 			"ingressBurst": 0,
 			"egressRate": 123,
 			"egressBurst": 123,
-			"nonShapedSubnets": ["192.168.0.0/24"],
+			"unshapedSubnets": ["192.168.0.0/24"],
 			"runtimeConfig": {
 				"bandWidth": {
 					"ingressRate": 8,
 					"ingressBurst": 8,
 					"egressRate": 16,
 					"egressBurst": 9,
-					"nonShapedSubnets": ["10.0.0.0/8", "fd00:db8:abcd:1234:e000::/68"]
+					"unshapedSubnets": ["10.0.0.0/8", "fd00:db8:abcd:1234:e000::/68"]
 				}
 			},
 			"prevResult": {
