@@ -605,7 +605,7 @@ var _ = Describe("bandwidth test", func() {
 
 				// Class with traffic shapping settings
 				Expect(classes[1]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
-				Expect(classes[1].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, uint16(ShapedClassMinorID))))
+				Expect(classes[1].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, ShapedClassMinorID)))
 				Expect(classes[1].(*netlink.HtbClass).Rate).To(Equal(uint64(1000)))
 				// Expect(classes[1].(*netlink.HtbClass).Buffer).To(Equal(uint32(7812500)))
 				Expect(classes[1].(*netlink.HtbClass).Ceil).To(Equal(uint64(2000)))
