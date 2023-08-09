@@ -35,7 +35,7 @@ import (
 	"github.com/containernetworking/plugins/pkg/testutils"
 )
 
-var _ = Describe("bandwidth qos test", func() {
+var _ = Describe("bandwidth measure test", func() {
 	var (
 		hostNs          ns.NetNS
 		containerNs     ns.NetNS
@@ -821,34 +821,4 @@ var _ = Describe("bandwidth qos test", func() {
 			})
 		})
 	}
-
-	Describe("Validating input", func() {
-		It("Should allow only 4GB burst rate", func() {
-			err := validateRateAndBurst(5000, 4*1024*1024*1024*8-16) // 2 bytes less than the max should pass
-			Expect(err).NotTo(HaveOccurred())
-			err = validateRateAndBurst(5000, 4*1024*1024*1024*8) // we're 1 bit above MaxUint32
-			Expect(err).To(HaveOccurred())
-			err = validateRateAndBurst(0, 1)
-			Expect(err).To(HaveOccurred())
-			err = validateRateAndBurst(1, 0)
-			Expect(err).To(HaveOccurred())
-			err = validateRateAndBurst(0, 0)
-			Expect(err).NotTo(HaveOccurred())
-		})
-
-		It("Should fail if both ShapedSubnets and UnshapedSubnets are specified", func() {
-			err := validateSubnets([]string{"10.0.0.0/8"}, []string{"192.168.0.0/24"})
-			Expect(err).To(HaveOccurred())
-		})
-
-		It("Should fail if specified UnshapedSubnets are not valid CIDRs", func() {
-			err := validateSubnets([]string{"10.0.0.0/8", "hello"}, []string{})
-			Expect(err).To(HaveOccurred())
-		})
-
-		It("Should fail if specified ShapedSubnets are not valid CIDRs", func() {
-			err := validateSubnets([]string{}, []string{"10.0.0.0/8", "hello"})
-			Expect(err).To(HaveOccurred())
-		})
-	})
 })
