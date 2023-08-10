@@ -249,10 +249,8 @@ func createMacvlan(netNS ns.NetNS, master, macvlanName string) {
 func buildOneConfig(cniVersion string, orig *PluginConf, prevResult types.Result) ([]byte, error) {
 	var err error
 
-	name := "myBWnet"
-
 	inject := map[string]interface{}{
-		"name":       name,
+		"name":       "myBWnet",
 		"cniVersion": cniVersion,
 	}
 	// Add previous plugin result
