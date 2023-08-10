@@ -77,7 +77,6 @@ var _ = Describe("bandwidth config test", func() {
 		ver := ver
 
 		Describe("cmdADD", func() {
-
 			It(fmt.Sprintf("[%s] fails with invalid UnshapedSubnets", ver), func() {
 				conf := fmt.Sprintf(`{
 			"cniVersion": "%s",
