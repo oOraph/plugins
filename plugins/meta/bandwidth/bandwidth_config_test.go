@@ -175,7 +175,7 @@ var _ = Describe("bandwidth config test", func() {
 				})).To(Succeed())
 			})
 
-			It(fmt.Sprintf("[%s] fails with both ShapedSubnets and UnShapedSubnets specified", ver), func() {
+			It(fmt.Sprintf("[%s] fails with both ShapedSubnets and InShapedSubnets specified", ver), func() {
 				conf := fmt.Sprintf(`{
 			"cniVersion": "%s",
 			"name": "cni-plugin-bandwidth-test",
@@ -185,7 +185,7 @@ var _ = Describe("bandwidth config test", func() {
 			"egressRate": 123,
 			"egressBurst": 123,
 			"ShapedSubnets": ["10.0.0.0/8"],
-			"UnShapedSubnets": ["192.168.0.0/16"],
+			"InShapedSubnets": ["192.168.0.0/16"],
 			"prevResult": {
 				"interfaces": [
 					{
@@ -220,7 +220,7 @@ var _ = Describe("bandwidth config test", func() {
 					defer GinkgoRecover()
 
 					_, _, err := testutils.CmdAdd(containerNs.Path(), args.ContainerID, "", []byte(conf), func() error { return cmdAdd(args) })
-					Expect(err).To(MatchError("unshapedSubnets and shapedSubnets cannot be both specified, one of them should be discarded"))
+					Expect(err).To(MatchError("inshapedSubnets and shapedSubnets cannot be both specified, one of them should be discarded"))
 					return nil
 				})).To(Succeed())
 			})
