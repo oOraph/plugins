@@ -17,7 +17,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math"
 	"net"
 	"os"
@@ -124,7 +124,7 @@ func getBandwidth(conf *PluginConf) *BandwidthEntry {
 	if err == nil {
 		defer readFile.Close()
 		overrideBw := BandwidthEntry{}
-		byteValue, _ := ioutil.ReadAll(readFile)
+		byteValue, _ := io.ReadAll(readFile)
 		err = json.Unmarshal(byteValue, &overrideBw)
 		if err == nil {
 			if bw == nil {
