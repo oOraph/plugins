@@ -20,8 +20,8 @@ import (
 	"net"
 	"syscall"
 
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
+	"github.com/onsi/ginkgo/v2"
+	"github.com/onsi/gomega"
 	"github.com/vishvananda/netlink"
 
 	"github.com/containernetworking/cni/pkg/skel"
@@ -30,7 +30,7 @@ import (
 	"github.com/containernetworking/plugins/pkg/testutils"
 )
 
-var _ = Describe("bandwidth test", func() {
+var _ = ginkgo.Describe("bandwidth test", func() {
 	var (
 		hostNs          ns.NetNS
 		containerNs     ns.NetNS
@@ -42,17 +42,17 @@ var _ = Describe("bandwidth test", func() {
 		hostIfaceMTU    int
 	)
 
-	BeforeEach(func() {
+	ginkgo.BeforeEach(func() {
 		var err error
 
 		hostIfname = "host-veth"
 		containerIfname = "container-veth"
 
 		hostNs, err = testutils.NewNS()
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		containerNs, err = testutils.NewNS()
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		hostIP = net.IP{169, 254, 0, 1}
 		containerIP = net.IP{10, 254, 0, 1}
@@ -62,11 +62,11 @@ var _ = Describe("bandwidth test", func() {
 		createVeth(hostNs, hostIfname, containerNs, containerIfname, hostIP, containerIP, hostIfaceMTU)
 	})
 
-	AfterEach(func() {
-		Expect(containerNs.Close()).To(Succeed())
-		Expect(testutils.UnmountNS(containerNs)).To(Succeed())
-		Expect(hostNs.Close()).To(Succeed())
-		Expect(testutils.UnmountNS(hostNs)).To(Succeed())
+	ginkgo.AfterEach(func() {
+		gomega.Expect(containerNs.Close()).To(gomega.Succeed())
+		gomega.Expect(testutils.UnmountNS(containerNs)).To(gomega.Succeed())
+		gomega.Expect(hostNs.Close()).To(gomega.Succeed())
+		gomega.Expect(testutils.UnmountNS(hostNs)).To(gomega.Succeed())
 	})
 
 	// Bandwidth requires host-side interface info, and thus only
@@ -76,8 +76,8 @@ var _ = Describe("bandwidth test", func() {
 		// See Gingkgo's "Patterns for dynamically generating tests" documentation.
 		ver := ver
 
-		Describe("cmdADD", func() {
-			It(fmt.Sprintf("[%s] works with a Veth pair without any unbounded traffic", ver), func() {
+		ginkgo.Describe("cmdADD", func() {
+			ginkgo.It(fmt.Sprintf("[%s] works with a Veth pair without any unbounded traffic", ver), func() {
 				conf := fmt.Sprintf(`{
 					"cniVersion": "%s",
 					"name": "cni-plugin-bandwidth-test",
@@ -117,112 +117,112 @@ var _ = Describe("bandwidth test", func() {
 				}
 
 				// Container egress (host ingress)
-				Expect(hostNs.Do(func(netNS ns.NetNS) error {
-					defer GinkgoRecover()
+				gomega.Expect(hostNs.Do(func(netNS ns.NetNS) error {
+					defer ginkgo.GinkgoRecover()
 					r, out, err := testutils.CmdAdd(containerNs.Path(), args.ContainerID, "", []byte(conf), func() error { return cmdAdd(args) })
-					Expect(err).NotTo(HaveOccurred(), string(out))
+					gomega.Expect(err).NotTo(gomega.HaveOccurred(), string(out))
 					result, err := types100.GetResult(r)
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-					Expect(result.Interfaces).To(HaveLen(3))
-					Expect(result.Interfaces[2].Name).To(Equal(ifbDeviceName))
-					Expect(result.Interfaces[2].Sandbox).To(Equal(""))
+					gomega.Expect(result.Interfaces).To(gomega.HaveLen(3))
+					gomega.Expect(result.Interfaces[2].Name).To(gomega.Equal(ifbDeviceName))
+					gomega.Expect(result.Interfaces[2].Sandbox).To(gomega.Equal(""))
 
 					ifbLink, err := netlink.LinkByName(ifbDeviceName)
-					Expect(err).NotTo(HaveOccurred())
-					Expect(ifbLink.Attrs().MTU).To(Equal(hostIfaceMTU))
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
+					gomega.Expect(ifbLink.Attrs().MTU).To(gomega.Equal(hostIfaceMTU))
 
 					qdiscs, err := netlink.QdiscList(ifbLink)
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-					Expect(qdiscs).To(HaveLen(1))
-					Expect(qdiscs[0].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
-					Expect(qdiscs[0]).To(BeAssignableToTypeOf(&netlink.Htb{}))
-					Expect(qdiscs[0].(*netlink.Htb).Defcls).To(Equal(uint32(ShapedClassMinorID)))
+					gomega.Expect(qdiscs).To(gomega.HaveLen(1))
+					gomega.Expect(qdiscs[0].Attrs().LinkIndex).To(gomega.Equal(ifbLink.Attrs().Index))
+					gomega.Expect(qdiscs[0]).To(gomega.BeAssignableToTypeOf(&netlink.Htb{}))
+					gomega.Expect(qdiscs[0].(*netlink.Htb).Defcls).To(gomega.Equal(uint32(ShapedClassMinorID)))
 
 					classes, err := netlink.ClassList(ifbLink, qdiscs[0].Attrs().Handle)
 
-					Expect(err).NotTo(HaveOccurred())
-					Expect(classes).To(HaveLen(2))
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
+					gomega.Expect(classes).To(gomega.HaveLen(2))
 
 					// Uncapped class
-					Expect(classes[0]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
-					Expect(classes[0].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, 1)))
-					Expect(classes[0].(*netlink.HtbClass).Rate).To(Equal(UncappedRate))
-					Expect(classes[0].(*netlink.HtbClass).Buffer).To(Equal(uint32(0)))
-					Expect(classes[0].(*netlink.HtbClass).Ceil).To(Equal(UncappedRate))
-					Expect(classes[0].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
+					gomega.Expect(classes[0]).To(gomega.BeAssignableToTypeOf(&netlink.HtbClass{}))
+					gomega.Expect(classes[0].(*netlink.HtbClass).Handle).To(gomega.Equal(netlink.MakeHandle(1, 1)))
+					gomega.Expect(classes[0].(*netlink.HtbClass).Rate).To(gomega.Equal(UncappedRate))
+					gomega.Expect(classes[0].(*netlink.HtbClass).Buffer).To(gomega.Equal(uint32(0)))
+					gomega.Expect(classes[0].(*netlink.HtbClass).Ceil).To(gomega.Equal(UncappedRate))
+					gomega.Expect(classes[0].(*netlink.HtbClass).Cbuffer).To(gomega.Equal(uint32(0)))
 
 					// Class with traffic shapping settings
-					Expect(classes[1]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
-					Expect(classes[1].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, uint16(qdiscs[0].(*netlink.Htb).Defcls))))
-					Expect(classes[1].(*netlink.HtbClass).Rate).To(Equal(uint64(2)))
-					// Expect(classes[1].(*netlink.HtbClass).Buffer).To(Equal(uint32(7812500)))
-					Expect(classes[1].(*netlink.HtbClass).Ceil).To(Equal(uint64(4)))
-					// Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
+					gomega.Expect(classes[1]).To(gomega.BeAssignableToTypeOf(&netlink.HtbClass{}))
+					gomega.Expect(classes[1].(*netlink.HtbClass).Handle).To(gomega.Equal(netlink.MakeHandle(1, uint16(qdiscs[0].(*netlink.Htb).Defcls))))
+					gomega.Expect(classes[1].(*netlink.HtbClass).Rate).To(gomega.Equal(uint64(2)))
+					// gomega.Expect(classes[1].(*netlink.HtbClass).Buffer).To(gomega.Equal(uint32(7812500)))
+					gomega.Expect(classes[1].(*netlink.HtbClass).Ceil).To(gomega.Equal(uint64(4)))
+					// gomega.Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(gomega.Equal(uint32(0)))
 
 					// Since we do not exclude anything from egress traffic shapping, we should not find any filter
 					filters, err := netlink.FilterList(ifbLink, qdiscs[0].Attrs().Handle)
-					Expect(err).NotTo(HaveOccurred())
-					Expect(filters).To(BeEmpty())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
+					gomega.Expect(filters).To(gomega.BeEmpty())
 
 					hostVethLink, err := netlink.LinkByName(hostIfname)
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 					qdiscFilters, err := netlink.FilterList(hostVethLink, netlink.MakeHandle(0xffff, 0))
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-					Expect(qdiscFilters).To(HaveLen(1))
-					Expect(qdiscFilters[0].(*netlink.U32).Actions[0].(*netlink.MirredAction).Ifindex).To(Equal(ifbLink.Attrs().Index))
+					gomega.Expect(qdiscFilters).To(gomega.HaveLen(1))
+					gomega.Expect(qdiscFilters[0].(*netlink.U32).Actions[0].(*netlink.MirredAction).Ifindex).To(gomega.Equal(ifbLink.Attrs().Index))
 
 					return nil
-				})).To(Succeed())
+				})).To(gomega.Succeed())
 
 				// Container ingress (host egress)
-				Expect(hostNs.Do(func(n ns.NetNS) error {
-					defer GinkgoRecover()
+				gomega.Expect(hostNs.Do(func(n ns.NetNS) error {
+					defer ginkgo.GinkgoRecover()
 
 					vethLink, err := netlink.LinkByName(hostIfname)
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 					qdiscs, err := netlink.QdiscList(vethLink)
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-					Expect(qdiscs).To(HaveLen(2))
-					Expect(qdiscs[0].Attrs().LinkIndex).To(Equal(vethLink.Attrs().Index))
-					Expect(qdiscs[0]).To(BeAssignableToTypeOf(&netlink.Htb{}))
-					Expect(qdiscs[0].(*netlink.Htb).Defcls).To(Equal(uint32(ShapedClassMinorID)))
+					gomega.Expect(qdiscs).To(gomega.HaveLen(2))
+					gomega.Expect(qdiscs[0].Attrs().LinkIndex).To(gomega.Equal(vethLink.Attrs().Index))
+					gomega.Expect(qdiscs[0]).To(gomega.BeAssignableToTypeOf(&netlink.Htb{}))
+					gomega.Expect(qdiscs[0].(*netlink.Htb).Defcls).To(gomega.Equal(uint32(ShapedClassMinorID)))
 
 					classes, err := netlink.ClassList(vethLink, qdiscs[0].Attrs().Handle)
 
-					Expect(err).NotTo(HaveOccurred())
-					Expect(classes).To(HaveLen(2))
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
+					gomega.Expect(classes).To(gomega.HaveLen(2))
 
 					// Uncapped class
-					Expect(classes[0]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
-					Expect(classes[0].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, 1)))
-					Expect(classes[0].(*netlink.HtbClass).Rate).To(Equal(UncappedRate))
-					Expect(classes[0].(*netlink.HtbClass).Buffer).To(Equal(uint32(0)))
-					Expect(classes[0].(*netlink.HtbClass).Ceil).To(Equal(UncappedRate))
-					Expect(classes[0].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
+					gomega.Expect(classes[0]).To(gomega.BeAssignableToTypeOf(&netlink.HtbClass{}))
+					gomega.Expect(classes[0].(*netlink.HtbClass).Handle).To(gomega.Equal(netlink.MakeHandle(1, 1)))
+					gomega.Expect(classes[0].(*netlink.HtbClass).Rate).To(gomega.Equal(UncappedRate))
+					gomega.Expect(classes[0].(*netlink.HtbClass).Buffer).To(gomega.Equal(uint32(0)))
+					gomega.Expect(classes[0].(*netlink.HtbClass).Ceil).To(gomega.Equal(UncappedRate))
+					gomega.Expect(classes[0].(*netlink.HtbClass).Cbuffer).To(gomega.Equal(uint32(0)))
 
 					// Class with traffic shapping settings
-					Expect(classes[1]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
-					Expect(classes[1].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, uint16(qdiscs[0].(*netlink.Htb).Defcls))))
-					Expect(classes[1].(*netlink.HtbClass).Rate).To(Equal(uint64(1)))
-					// Expect(classes[1].(*netlink.HtbClass).Buffer).To(Equal(uint32(15625000)))
-					Expect(classes[1].(*netlink.HtbClass).Ceil).To(Equal(uint64(2)))
-					// Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
+					gomega.Expect(classes[1]).To(gomega.BeAssignableToTypeOf(&netlink.HtbClass{}))
+					gomega.Expect(classes[1].(*netlink.HtbClass).Handle).To(gomega.Equal(netlink.MakeHandle(1, uint16(qdiscs[0].(*netlink.Htb).Defcls))))
+					gomega.Expect(classes[1].(*netlink.HtbClass).Rate).To(gomega.Equal(uint64(1)))
+					// gomega.Expect(classes[1].(*netlink.HtbClass).Buffer).To(gomega.Equal(uint32(15625000)))
+					gomega.Expect(classes[1].(*netlink.HtbClass).Ceil).To(gomega.Equal(uint64(2)))
+					// gomega.Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(gomega.Equal(uint32(0)))
 
 					// Since we do not exclude anything from ingress traffic shapping, we should not find any filter
 					filters, err := netlink.FilterList(vethLink, qdiscs[0].Attrs().Handle)
-					Expect(err).NotTo(HaveOccurred())
-					Expect(filters).To(BeEmpty())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
+					gomega.Expect(filters).To(gomega.BeEmpty())
 					return nil
-				})).To(Succeed())
+				})).To(gomega.Succeed())
 			})
 
-			It(fmt.Sprintf("[%s] works with a Veth pair with some ipv4 and ipv6 unbounded traffic", ver), func() {
+			ginkgo.It(fmt.Sprintf("[%s] works with a Veth pair with some ipv4 and ipv6 unbounded traffic", ver), func() {
 				conf := fmt.Sprintf(`{
 				"cniVersion": "%s",
 				"name": "cni-plugin-bandwidth-test",
@@ -266,220 +266,220 @@ var _ = Describe("bandwidth test", func() {
 				}
 
 				// Container egress (host ingress)
-				Expect(hostNs.Do(func(netNS ns.NetNS) error {
-					defer GinkgoRecover()
+				gomega.Expect(hostNs.Do(func(netNS ns.NetNS) error {
+					defer ginkgo.GinkgoRecover()
 					r, out, err := testutils.CmdAdd(containerNs.Path(), args.ContainerID, "", []byte(conf), func() error { return cmdAdd(args) })
-					Expect(err).NotTo(HaveOccurred(), string(out))
+					gomega.Expect(err).NotTo(gomega.HaveOccurred(), string(out))
 					result, err := types100.GetResult(r)
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-					Expect(result.Interfaces).To(HaveLen(3))
-					Expect(result.Interfaces[2].Name).To(Equal(ifbDeviceName))
-					Expect(result.Interfaces[2].Sandbox).To(Equal(""))
+					gomega.Expect(result.Interfaces).To(gomega.HaveLen(3))
+					gomega.Expect(result.Interfaces[2].Name).To(gomega.Equal(ifbDeviceName))
+					gomega.Expect(result.Interfaces[2].Sandbox).To(gomega.Equal(""))
 
 					ifbLink, err := netlink.LinkByName(ifbDeviceName)
-					Expect(err).NotTo(HaveOccurred())
-					Expect(ifbLink.Attrs().MTU).To(Equal(hostIfaceMTU))
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
+					gomega.Expect(ifbLink.Attrs().MTU).To(gomega.Equal(hostIfaceMTU))
 
 					qdiscs, err := netlink.QdiscList(ifbLink)
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-					Expect(qdiscs).To(HaveLen(1))
-					Expect(qdiscs[0].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
-					Expect(qdiscs[0]).To(BeAssignableToTypeOf(&netlink.Htb{}))
-					Expect(qdiscs[0].(*netlink.Htb).Defcls).To(Equal(uint32(ShapedClassMinorID)))
+					gomega.Expect(qdiscs).To(gomega.HaveLen(1))
+					gomega.Expect(qdiscs[0].Attrs().LinkIndex).To(gomega.Equal(ifbLink.Attrs().Index))
+					gomega.Expect(qdiscs[0]).To(gomega.BeAssignableToTypeOf(&netlink.Htb{}))
+					gomega.Expect(qdiscs[0].(*netlink.Htb).Defcls).To(gomega.Equal(uint32(ShapedClassMinorID)))
 
 					classes, err := netlink.ClassList(ifbLink, qdiscs[0].Attrs().Handle)
 
-					Expect(err).NotTo(HaveOccurred())
-					Expect(classes).To(HaveLen(2))
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
+					gomega.Expect(classes).To(gomega.HaveLen(2))
 
 					// Uncapped class
-					Expect(classes[0]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
-					Expect(classes[0].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, 1)))
-					Expect(classes[0].(*netlink.HtbClass).Rate).To(Equal(UncappedRate))
-					Expect(classes[0].(*netlink.HtbClass).Buffer).To(Equal(uint32(0)))
-					Expect(classes[0].(*netlink.HtbClass).Ceil).To(Equal(UncappedRate))
-					Expect(classes[0].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
+					gomega.Expect(classes[0]).To(gomega.BeAssignableToTypeOf(&netlink.HtbClass{}))
+					gomega.Expect(classes[0].(*netlink.HtbClass).Handle).To(gomega.Equal(netlink.MakeHandle(1, 1)))
+					gomega.Expect(classes[0].(*netlink.HtbClass).Rate).To(gomega.Equal(UncappedRate))
+					gomega.Expect(classes[0].(*netlink.HtbClass).Buffer).To(gomega.Equal(uint32(0)))
+					gomega.Expect(classes[0].(*netlink.HtbClass).Ceil).To(gomega.Equal(UncappedRate))
+					gomega.Expect(classes[0].(*netlink.HtbClass).Cbuffer).To(gomega.Equal(uint32(0)))
 
 					// Class with traffic shapping settings
-					Expect(classes[1]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
-					Expect(classes[1].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, uint16(qdiscs[0].(*netlink.Htb).Defcls))))
-					Expect(classes[1].(*netlink.HtbClass).Rate).To(Equal(uint64(2)))
-					// Expect(classes[1].(*netlink.HtbClass).Buffer).To(Equal(uint32(7812500)))
-					Expect(classes[1].(*netlink.HtbClass).Ceil).To(Equal(uint64(4)))
-					// Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
+					gomega.Expect(classes[1]).To(gomega.BeAssignableToTypeOf(&netlink.HtbClass{}))
+					gomega.Expect(classes[1].(*netlink.HtbClass).Handle).To(gomega.Equal(netlink.MakeHandle(1, uint16(qdiscs[0].(*netlink.Htb).Defcls))))
+					gomega.Expect(classes[1].(*netlink.HtbClass).Rate).To(gomega.Equal(uint64(2)))
+					// gomega.Expect(classes[1].(*netlink.HtbClass).Buffer).To(gomega.Equal(uint32(7812500)))
+					gomega.Expect(classes[1].(*netlink.HtbClass).Ceil).To(gomega.Equal(uint64(4)))
+					// gomega.Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(gomega.Equal(uint32(0)))
 
 					filters, err := netlink.FilterList(ifbLink, qdiscs[0].Attrs().Handle)
-					Expect(err).NotTo(HaveOccurred())
-					Expect(filters).To(HaveLen(2))
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
+					gomega.Expect(filters).To(gomega.HaveLen(2))
 
 					// traffic to fd00:db8:abcd:1234:e000::/68 redirected to uncapped class
-					Expect(filters[0]).To(BeAssignableToTypeOf(&netlink.U32{}))
-					Expect(filters[0].(*netlink.U32).Actions).To(BeEmpty())
-					Expect(filters[0].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_IPV6)))
-					Expect(filters[0].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
-					Expect(filters[0].Attrs().Priority).To(Equal(uint16(15)))
-					Expect(filters[0].Attrs().Parent).To(Equal(qdiscs[0].Attrs().Handle))
-					Expect(filters[0].(*netlink.U32).ClassId).To(Equal(netlink.MakeHandle(1, 1)))
+					gomega.Expect(filters[0]).To(gomega.BeAssignableToTypeOf(&netlink.U32{}))
+					gomega.Expect(filters[0].(*netlink.U32).Actions).To(gomega.BeEmpty())
+					gomega.Expect(filters[0].Attrs().Protocol).To(gomega.Equal(uint16(syscall.ETH_P_IPV6)))
+					gomega.Expect(filters[0].Attrs().LinkIndex).To(gomega.Equal(ifbLink.Attrs().Index))
+					gomega.Expect(filters[0].Attrs().Priority).To(gomega.Equal(uint16(15)))
+					gomega.Expect(filters[0].Attrs().Parent).To(gomega.Equal(qdiscs[0].Attrs().Handle))
+					gomega.Expect(filters[0].(*netlink.U32).ClassId).To(gomega.Equal(netlink.MakeHandle(1, 1)))
 
 					filterSel := filters[0].(*netlink.U32).Sel
-					Expect(filterSel).To(BeAssignableToTypeOf(&netlink.TcU32Sel{}))
-					Expect(filterSel.Flags).To(Equal(uint8(netlink.TC_U32_TERMINAL)))
-					Expect(filterSel.Keys).To(HaveLen(3))
-					Expect(filterSel.Nkeys).To(Equal(uint8(3)))
+					gomega.Expect(filterSel).To(gomega.BeAssignableToTypeOf(&netlink.TcU32Sel{}))
+					gomega.Expect(filterSel.Flags).To(gomega.Equal(uint8(netlink.TC_U32_TERMINAL)))
+					gomega.Expect(filterSel.Keys).To(gomega.HaveLen(3))
+					gomega.Expect(filterSel.Nkeys).To(gomega.Equal(uint8(3)))
 
 					// The filter should match to fd00:db8:abcd:1234:e000::/68 dst address in other words it should be:
 					// match 0xfd000db8/0xffffffff at 24
 					// match 0xabcd1234/0xffffffff at 28
 					// match 0xe0000000/0xf0000000 at 32
 					// (and last match discarded because it would be equivalent to a matchall/true condition at 36)
-					Expect(filterSel.Keys[0].Off).To(Equal(int32(24)))
-					Expect(filterSel.Keys[0].Val).To(Equal(uint32(4244639160)))
-					Expect(filterSel.Keys[0].Mask).To(Equal(uint32(4294967295)))
+					gomega.Expect(filterSel.Keys[0].Off).To(gomega.Equal(int32(24)))
+					gomega.Expect(filterSel.Keys[0].Val).To(gomega.Equal(uint32(4244639160)))
+					gomega.Expect(filterSel.Keys[0].Mask).To(gomega.Equal(uint32(4294967295)))
 
-					Expect(filterSel.Keys[1].Off).To(Equal(int32(28)))
-					Expect(filterSel.Keys[1].Val).To(Equal(uint32(2882343476)))
-					Expect(filterSel.Keys[1].Mask).To(Equal(uint32(4294967295)))
+					gomega.Expect(filterSel.Keys[1].Off).To(gomega.Equal(int32(28)))
+					gomega.Expect(filterSel.Keys[1].Val).To(gomega.Equal(uint32(2882343476)))
+					gomega.Expect(filterSel.Keys[1].Mask).To(gomega.Equal(uint32(4294967295)))
 
-					Expect(filterSel.Keys[2].Off).To(Equal(int32(32)))
-					Expect(filterSel.Keys[2].Val).To(Equal(uint32(3758096384)))
-					Expect(filterSel.Keys[2].Mask).To(Equal(uint32(4026531840)))
+					gomega.Expect(filterSel.Keys[2].Off).To(gomega.Equal(int32(32)))
+					gomega.Expect(filterSel.Keys[2].Val).To(gomega.Equal(uint32(3758096384)))
+					gomega.Expect(filterSel.Keys[2].Mask).To(gomega.Equal(uint32(4026531840)))
 
 					// traffic to 10.0.0.0/8 redirected to uncapped class
-					Expect(filters[1]).To(BeAssignableToTypeOf(&netlink.U32{}))
-					Expect(filters[1].(*netlink.U32).Actions).To(BeEmpty())
-					Expect(filters[1].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_IP)))
-					Expect(filters[1].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
-					Expect(filters[1].Attrs().Priority).To(Equal(uint16(16)))
-					Expect(filters[1].Attrs().Parent).To(Equal(qdiscs[0].Attrs().Handle))
-					Expect(filters[1].(*netlink.U32).ClassId).To(Equal(netlink.MakeHandle(1, 1)))
+					gomega.Expect(filters[1]).To(gomega.BeAssignableToTypeOf(&netlink.U32{}))
+					gomega.Expect(filters[1].(*netlink.U32).Actions).To(gomega.BeEmpty())
+					gomega.Expect(filters[1].Attrs().Protocol).To(gomega.Equal(uint16(syscall.ETH_P_IP)))
+					gomega.Expect(filters[1].Attrs().LinkIndex).To(gomega.Equal(ifbLink.Attrs().Index))
+					gomega.Expect(filters[1].Attrs().Priority).To(gomega.Equal(uint16(16)))
+					gomega.Expect(filters[1].Attrs().Parent).To(gomega.Equal(qdiscs[0].Attrs().Handle))
+					gomega.Expect(filters[1].(*netlink.U32).ClassId).To(gomega.Equal(netlink.MakeHandle(1, 1)))
 
 					filterSel = filters[1].(*netlink.U32).Sel
-					Expect(filterSel).To(BeAssignableToTypeOf(&netlink.TcU32Sel{}))
-					Expect(filterSel.Flags).To(Equal(uint8(netlink.TC_U32_TERMINAL)))
-					Expect(filterSel.Keys).To(HaveLen(1))
-					Expect(filterSel.Nkeys).To(Equal(uint8(1)))
+					gomega.Expect(filterSel).To(gomega.BeAssignableToTypeOf(&netlink.TcU32Sel{}))
+					gomega.Expect(filterSel.Flags).To(gomega.Equal(uint8(netlink.TC_U32_TERMINAL)))
+					gomega.Expect(filterSel.Keys).To(gomega.HaveLen(1))
+					gomega.Expect(filterSel.Nkeys).To(gomega.Equal(uint8(1)))
 
 					// The filter should match to 10.0.0.0/8 dst address in other words it should be:
 					// match 0a000000/ff000000 at 16
 					selKey := filterSel.Keys[0]
-					Expect(selKey.Val).To(Equal(uint32(10 * math.Pow(256, 3))))
-					Expect(selKey.Off).To(Equal(int32(16)))
-					Expect(selKey.Mask).To(Equal(uint32(255 * math.Pow(256, 3))))
+					gomega.Expect(selKey.Val).To(gomega.Equal(uint32(10 * math.Pow(256, 3))))
+					gomega.Expect(selKey.Off).To(gomega.Equal(int32(16)))
+					gomega.Expect(selKey.Mask).To(gomega.Equal(uint32(255 * math.Pow(256, 3))))
 
 					hostVethLink, err := netlink.LinkByName(hostIfname)
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 					qdiscFilters, err := netlink.FilterList(hostVethLink, netlink.MakeHandle(0xffff, 0))
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-					Expect(qdiscFilters).To(HaveLen(1))
-					Expect(qdiscFilters[0].(*netlink.U32).Actions[0].(*netlink.MirredAction).Ifindex).To(Equal(ifbLink.Attrs().Index))
+					gomega.Expect(qdiscFilters).To(gomega.HaveLen(1))
+					gomega.Expect(qdiscFilters[0].(*netlink.U32).Actions[0].(*netlink.MirredAction).Ifindex).To(gomega.Equal(ifbLink.Attrs().Index))
 
 					return nil
-				})).To(Succeed())
+				})).To(gomega.Succeed())
 
 				// Container ingress (host egress)
-				Expect(hostNs.Do(func(n ns.NetNS) error {
-					defer GinkgoRecover()
+				gomega.Expect(hostNs.Do(func(n ns.NetNS) error {
+					defer ginkgo.GinkgoRecover()
 
 					vethLink, err := netlink.LinkByName(hostIfname)
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 					qdiscs, err := netlink.QdiscList(vethLink)
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-					Expect(qdiscs).To(HaveLen(2))
-					Expect(qdiscs[0].Attrs().LinkIndex).To(Equal(vethLink.Attrs().Index))
-					Expect(qdiscs[0]).To(BeAssignableToTypeOf(&netlink.Htb{}))
-					Expect(qdiscs[0].(*netlink.Htb).Defcls).To(Equal(uint32(ShapedClassMinorID)))
+					gomega.Expect(qdiscs).To(gomega.HaveLen(2))
+					gomega.Expect(qdiscs[0].Attrs().LinkIndex).To(gomega.Equal(vethLink.Attrs().Index))
+					gomega.Expect(qdiscs[0]).To(gomega.BeAssignableToTypeOf(&netlink.Htb{}))
+					gomega.Expect(qdiscs[0].(*netlink.Htb).Defcls).To(gomega.Equal(uint32(ShapedClassMinorID)))
 
 					classes, err := netlink.ClassList(vethLink, qdiscs[0].Attrs().Handle)
 
-					Expect(err).NotTo(HaveOccurred())
-					Expect(classes).To(HaveLen(2))
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
+					gomega.Expect(classes).To(gomega.HaveLen(2))
 
 					// Uncapped class
-					Expect(classes[0]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
-					Expect(classes[0].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, 1)))
-					Expect(classes[0].(*netlink.HtbClass).Rate).To(Equal(UncappedRate))
-					Expect(classes[0].(*netlink.HtbClass).Buffer).To(Equal(uint32(0)))
-					Expect(classes[0].(*netlink.HtbClass).Ceil).To(Equal(UncappedRate))
-					Expect(classes[0].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
+					gomega.Expect(classes[0]).To(gomega.BeAssignableToTypeOf(&netlink.HtbClass{}))
+					gomega.Expect(classes[0].(*netlink.HtbClass).Handle).To(gomega.Equal(netlink.MakeHandle(1, 1)))
+					gomega.Expect(classes[0].(*netlink.HtbClass).Rate).To(gomega.Equal(UncappedRate))
+					gomega.Expect(classes[0].(*netlink.HtbClass).Buffer).To(gomega.Equal(uint32(0)))
+					gomega.Expect(classes[0].(*netlink.HtbClass).Ceil).To(gomega.Equal(UncappedRate))
+					gomega.Expect(classes[0].(*netlink.HtbClass).Cbuffer).To(gomega.Equal(uint32(0)))
 
 					// Class with traffic shapping settings
-					Expect(classes[1]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
-					Expect(classes[1].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, uint16(qdiscs[0].(*netlink.Htb).Defcls))))
-					Expect(classes[1].(*netlink.HtbClass).Rate).To(Equal(uint64(1)))
-					// Expect(classes[1].(*netlink.HtbClass).Buffer).To(Equal(uint32(15625000)))
-					Expect(classes[1].(*netlink.HtbClass).Ceil).To(Equal(uint64(2)))
-					// Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
+					gomega.Expect(classes[1]).To(gomega.BeAssignableToTypeOf(&netlink.HtbClass{}))
+					gomega.Expect(classes[1].(*netlink.HtbClass).Handle).To(gomega.Equal(netlink.MakeHandle(1, uint16(qdiscs[0].(*netlink.Htb).Defcls))))
+					gomega.Expect(classes[1].(*netlink.HtbClass).Rate).To(gomega.Equal(uint64(1)))
+					// gomega.Expect(classes[1].(*netlink.HtbClass).Buffer).To(gomega.Equal(uint32(15625000)))
+					gomega.Expect(classes[1].(*netlink.HtbClass).Ceil).To(gomega.Equal(uint64(2)))
+					// gomega.Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(gomega.Equal(uint32(0)))
 
 					filters, err := netlink.FilterList(vethLink, qdiscs[0].Attrs().Handle)
-					Expect(err).NotTo(HaveOccurred())
-					Expect(filters).To(HaveLen(2))
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
+					gomega.Expect(filters).To(gomega.HaveLen(2))
 
 					// traffic to fd00:db8:abcd:1234:e000::/68 redirected to uncapped class
-					Expect(filters[0]).To(BeAssignableToTypeOf(&netlink.U32{}))
-					Expect(filters[0].(*netlink.U32).Actions).To(BeEmpty())
-					Expect(filters[0].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_IPV6)))
-					Expect(filters[0].Attrs().LinkIndex).To(Equal(vethLink.Attrs().Index))
-					Expect(filters[0].Attrs().Priority).To(Equal(uint16(15)))
-					Expect(filters[0].Attrs().Parent).To(Equal(qdiscs[0].Attrs().Handle))
-					Expect(filters[0].(*netlink.U32).ClassId).To(Equal(netlink.MakeHandle(1, 1)))
+					gomega.Expect(filters[0]).To(gomega.BeAssignableToTypeOf(&netlink.U32{}))
+					gomega.Expect(filters[0].(*netlink.U32).Actions).To(gomega.BeEmpty())
+					gomega.Expect(filters[0].Attrs().Protocol).To(gomega.Equal(uint16(syscall.ETH_P_IPV6)))
+					gomega.Expect(filters[0].Attrs().LinkIndex).To(gomega.Equal(vethLink.Attrs().Index))
+					gomega.Expect(filters[0].Attrs().Priority).To(gomega.Equal(uint16(15)))
+					gomega.Expect(filters[0].Attrs().Parent).To(gomega.Equal(qdiscs[0].Attrs().Handle))
+					gomega.Expect(filters[0].(*netlink.U32).ClassId).To(gomega.Equal(netlink.MakeHandle(1, 1)))
 
 					filterSel := filters[0].(*netlink.U32).Sel
-					Expect(filterSel).To(BeAssignableToTypeOf(&netlink.TcU32Sel{}))
-					Expect(filterSel.Flags).To(Equal(uint8(netlink.TC_U32_TERMINAL)))
-					Expect(filterSel.Keys).To(HaveLen(3))
-					Expect(filterSel.Nkeys).To(Equal(uint8(3)))
+					gomega.Expect(filterSel).To(gomega.BeAssignableToTypeOf(&netlink.TcU32Sel{}))
+					gomega.Expect(filterSel.Flags).To(gomega.Equal(uint8(netlink.TC_U32_TERMINAL)))
+					gomega.Expect(filterSel.Keys).To(gomega.HaveLen(3))
+					gomega.Expect(filterSel.Nkeys).To(gomega.Equal(uint8(3)))
 
 					// The filter should match to fd00:db8:abcd:1234:e000::/68 dst address in other words it should be:
 					// match 0xfd000db8/0xffffffff at 24
 					// match 0xabcd1234/0xffffffff at 28
 					// match 0xe0000000/0xf0000000 at 32
 					// (and last match discarded because it would be equivalent to a matchall/true condition at 36)
-					Expect(filterSel.Keys[0].Off).To(Equal(int32(24)))
-					Expect(filterSel.Keys[0].Val).To(Equal(uint32(4244639160)))
-					Expect(filterSel.Keys[0].Mask).To(Equal(uint32(4294967295)))
+					gomega.Expect(filterSel.Keys[0].Off).To(gomega.Equal(int32(24)))
+					gomega.Expect(filterSel.Keys[0].Val).To(gomega.Equal(uint32(4244639160)))
+					gomega.Expect(filterSel.Keys[0].Mask).To(gomega.Equal(uint32(4294967295)))
 
-					Expect(filterSel.Keys[1].Off).To(Equal(int32(28)))
-					Expect(filterSel.Keys[1].Val).To(Equal(uint32(2882343476)))
-					Expect(filterSel.Keys[1].Mask).To(Equal(uint32(4294967295)))
+					gomega.Expect(filterSel.Keys[1].Off).To(gomega.Equal(int32(28)))
+					gomega.Expect(filterSel.Keys[1].Val).To(gomega.Equal(uint32(2882343476)))
+					gomega.Expect(filterSel.Keys[1].Mask).To(gomega.Equal(uint32(4294967295)))
 
-					Expect(filterSel.Keys[2].Off).To(Equal(int32(32)))
-					Expect(filterSel.Keys[2].Val).To(Equal(uint32(3758096384)))
-					Expect(filterSel.Keys[2].Mask).To(Equal(uint32(4026531840)))
+					gomega.Expect(filterSel.Keys[2].Off).To(gomega.Equal(int32(32)))
+					gomega.Expect(filterSel.Keys[2].Val).To(gomega.Equal(uint32(3758096384)))
+					gomega.Expect(filterSel.Keys[2].Mask).To(gomega.Equal(uint32(4026531840)))
 
 					// traffic to 10.0.0.0/8 redirected to uncapped class
-					Expect(filters[1]).To(BeAssignableToTypeOf(&netlink.U32{}))
-					Expect(filters[1].(*netlink.U32).Actions).To(BeEmpty())
-					Expect(filters[1].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_IP)))
-					Expect(filters[1].Attrs().LinkIndex).To(Equal(vethLink.Attrs().Index))
-					Expect(filters[1].Attrs().Priority).To(Equal(uint16(16)))
-					Expect(filters[1].Attrs().Parent).To(Equal(qdiscs[0].Attrs().Handle))
-					Expect(filters[1].(*netlink.U32).ClassId).To(Equal(netlink.MakeHandle(1, 1)))
+					gomega.Expect(filters[1]).To(gomega.BeAssignableToTypeOf(&netlink.U32{}))
+					gomega.Expect(filters[1].(*netlink.U32).Actions).To(gomega.BeEmpty())
+					gomega.Expect(filters[1].Attrs().Protocol).To(gomega.Equal(uint16(syscall.ETH_P_IP)))
+					gomega.Expect(filters[1].Attrs().LinkIndex).To(gomega.Equal(vethLink.Attrs().Index))
+					gomega.Expect(filters[1].Attrs().Priority).To(gomega.Equal(uint16(16)))
+					gomega.Expect(filters[1].Attrs().Parent).To(gomega.Equal(qdiscs[0].Attrs().Handle))
+					gomega.Expect(filters[1].(*netlink.U32).ClassId).To(gomega.Equal(netlink.MakeHandle(1, 1)))
 
 					filterSel = filters[1].(*netlink.U32).Sel
-					Expect(filterSel).To(BeAssignableToTypeOf(&netlink.TcU32Sel{}))
-					Expect(filterSel.Flags).To(Equal(uint8(netlink.TC_U32_TERMINAL)))
-					Expect(filterSel.Keys).To(HaveLen(1))
-					Expect(filterSel.Nkeys).To(Equal(uint8(1)))
+					gomega.Expect(filterSel).To(gomega.BeAssignableToTypeOf(&netlink.TcU32Sel{}))
+					gomega.Expect(filterSel.Flags).To(gomega.Equal(uint8(netlink.TC_U32_TERMINAL)))
+					gomega.Expect(filterSel.Keys).To(gomega.HaveLen(1))
+					gomega.Expect(filterSel.Nkeys).To(gomega.Equal(uint8(1)))
 
 					// The filter should match to 10.0.0.0/8 dst address in other words it should be:
 					// match 0a000000/ff000000 at 16
 					selKey := filterSel.Keys[0]
-					Expect(selKey.Val).To(Equal(uint32(10 * math.Pow(256, 3))))
-					Expect(selKey.Off).To(Equal(int32(16)))
-					Expect(selKey.Mask).To(Equal(uint32(255 * math.Pow(256, 3))))
+					gomega.Expect(selKey.Val).To(gomega.Equal(uint32(10 * math.Pow(256, 3))))
+					gomega.Expect(selKey.Off).To(gomega.Equal(int32(16)))
+					gomega.Expect(selKey.Mask).To(gomega.Equal(uint32(255 * math.Pow(256, 3))))
 
 					return nil
-				})).To(Succeed())
+				})).To(gomega.Succeed())
 			})
 		})
 
-		It(fmt.Sprintf("[%s] works with a Veth pair with some ipv4 and ipv6 shaped traffic for specific subnets", ver), func() {
+		ginkgo.It(fmt.Sprintf("[%s] works with a Veth pair with some ipv4 and ipv6 shaped traffic for specific subnets", ver), func() {
 			conf := fmt.Sprintf(`{
 			"cniVersion": "%s",
 			"name": "cni-plugin-bandwidth-test",
@@ -523,219 +523,219 @@ var _ = Describe("bandwidth test", func() {
 			}
 
 			// Container egress (host ingress)
-			Expect(hostNs.Do(func(netNS ns.NetNS) error {
-				defer GinkgoRecover()
+			gomega.Expect(hostNs.Do(func(netNS ns.NetNS) error {
+				defer ginkgo.GinkgoRecover()
 				r, out, err := testutils.CmdAdd(containerNs.Path(), args.ContainerID, "", []byte(conf), func() error { return cmdAdd(args) })
-				Expect(err).NotTo(HaveOccurred(), string(out))
+				gomega.Expect(err).NotTo(gomega.HaveOccurred(), string(out))
 				result, err := types100.GetResult(r)
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-				Expect(result.Interfaces).To(HaveLen(3))
-				Expect(result.Interfaces[2].Name).To(Equal(ifbDeviceName))
-				Expect(result.Interfaces[2].Sandbox).To(Equal(""))
+				gomega.Expect(result.Interfaces).To(gomega.HaveLen(3))
+				gomega.Expect(result.Interfaces[2].Name).To(gomega.Equal(ifbDeviceName))
+				gomega.Expect(result.Interfaces[2].Sandbox).To(gomega.Equal(""))
 
 				ifbLink, err := netlink.LinkByName(ifbDeviceName)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(ifbLink.Attrs().MTU).To(Equal(hostIfaceMTU))
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
+				gomega.Expect(ifbLink.Attrs().MTU).To(gomega.Equal(hostIfaceMTU))
 
 				qdiscs, err := netlink.QdiscList(ifbLink)
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-				Expect(qdiscs).To(HaveLen(1))
-				Expect(qdiscs[0].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
-				Expect(qdiscs[0]).To(BeAssignableToTypeOf(&netlink.Htb{}))
-				Expect(qdiscs[0].(*netlink.Htb).Defcls).To(Equal(uint32(UnShapedClassMinorID)))
+				gomega.Expect(qdiscs).To(gomega.HaveLen(1))
+				gomega.Expect(qdiscs[0].Attrs().LinkIndex).To(gomega.Equal(ifbLink.Attrs().Index))
+				gomega.Expect(qdiscs[0]).To(gomega.BeAssignableToTypeOf(&netlink.Htb{}))
+				gomega.Expect(qdiscs[0].(*netlink.Htb).Defcls).To(gomega.Equal(uint32(UnShapedClassMinorID)))
 
 				classes, err := netlink.ClassList(ifbLink, qdiscs[0].Attrs().Handle)
 
-				Expect(err).NotTo(HaveOccurred())
-				Expect(classes).To(HaveLen(2))
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
+				gomega.Expect(classes).To(gomega.HaveLen(2))
 
 				// Uncapped class
-				Expect(classes[0]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
-				Expect(classes[0].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, UnShapedClassMinorID)))
-				Expect(classes[0].(*netlink.HtbClass).Rate).To(Equal(UncappedRate))
-				Expect(classes[0].(*netlink.HtbClass).Buffer).To(Equal(uint32(0)))
-				Expect(classes[0].(*netlink.HtbClass).Ceil).To(Equal(UncappedRate))
-				Expect(classes[0].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
+				gomega.Expect(classes[0]).To(gomega.BeAssignableToTypeOf(&netlink.HtbClass{}))
+				gomega.Expect(classes[0].(*netlink.HtbClass).Handle).To(gomega.Equal(netlink.MakeHandle(1, UnShapedClassMinorID)))
+				gomega.Expect(classes[0].(*netlink.HtbClass).Rate).To(gomega.Equal(UncappedRate))
+				gomega.Expect(classes[0].(*netlink.HtbClass).Buffer).To(gomega.Equal(uint32(0)))
+				gomega.Expect(classes[0].(*netlink.HtbClass).Ceil).To(gomega.Equal(UncappedRate))
+				gomega.Expect(classes[0].(*netlink.HtbClass).Cbuffer).To(gomega.Equal(uint32(0)))
 
 				// Class with traffic shapping settings
-				Expect(classes[1]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
-				Expect(classes[1].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, ShapedClassMinorID)))
-				Expect(classes[1].(*netlink.HtbClass).Rate).To(Equal(uint64(2)))
-				// Expect(classes[1].(*netlink.HtbClass).Buffer).To(Equal(uint32(7812500)))
-				Expect(classes[1].(*netlink.HtbClass).Ceil).To(Equal(uint64(4)))
-				// Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
+				gomega.Expect(classes[1]).To(gomega.BeAssignableToTypeOf(&netlink.HtbClass{}))
+				gomega.Expect(classes[1].(*netlink.HtbClass).Handle).To(gomega.Equal(netlink.MakeHandle(1, ShapedClassMinorID)))
+				gomega.Expect(classes[1].(*netlink.HtbClass).Rate).To(gomega.Equal(uint64(2)))
+				// gomega.Expect(classes[1].(*netlink.HtbClass).Buffer).To(gomega.Equal(uint32(7812500)))
+				gomega.Expect(classes[1].(*netlink.HtbClass).Ceil).To(gomega.Equal(uint64(4)))
+				// gomega.Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(gomega.Equal(uint32(0)))
 
 				filters, err := netlink.FilterList(ifbLink, qdiscs[0].Attrs().Handle)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(filters).To(HaveLen(2))
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
+				gomega.Expect(filters).To(gomega.HaveLen(2))
 
 				// traffic to fd00:db8:abcd:1234:e000::/68 redirected to uncapped class
-				Expect(filters[0]).To(BeAssignableToTypeOf(&netlink.U32{}))
-				Expect(filters[0].(*netlink.U32).Actions).To(BeEmpty())
-				Expect(filters[0].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_IPV6)))
-				Expect(filters[0].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
-				Expect(filters[0].Attrs().Priority).To(Equal(uint16(15)))
-				Expect(filters[0].Attrs().Parent).To(Equal(qdiscs[0].Attrs().Handle))
-				Expect(filters[0].(*netlink.U32).ClassId).To(Equal(netlink.MakeHandle(1, ShapedClassMinorID)))
+				gomega.Expect(filters[0]).To(gomega.BeAssignableToTypeOf(&netlink.U32{}))
+				gomega.Expect(filters[0].(*netlink.U32).Actions).To(gomega.BeEmpty())
+				gomega.Expect(filters[0].Attrs().Protocol).To(gomega.Equal(uint16(syscall.ETH_P_IPV6)))
+				gomega.Expect(filters[0].Attrs().LinkIndex).To(gomega.Equal(ifbLink.Attrs().Index))
+				gomega.Expect(filters[0].Attrs().Priority).To(gomega.Equal(uint16(15)))
+				gomega.Expect(filters[0].Attrs().Parent).To(gomega.Equal(qdiscs[0].Attrs().Handle))
+				gomega.Expect(filters[0].(*netlink.U32).ClassId).To(gomega.Equal(netlink.MakeHandle(1, ShapedClassMinorID)))
 
 				filterSel := filters[0].(*netlink.U32).Sel
-				Expect(filterSel).To(BeAssignableToTypeOf(&netlink.TcU32Sel{}))
-				Expect(filterSel.Flags).To(Equal(uint8(netlink.TC_U32_TERMINAL)))
-				Expect(filterSel.Keys).To(HaveLen(3))
-				Expect(filterSel.Nkeys).To(Equal(uint8(3)))
+				gomega.Expect(filterSel).To(gomega.BeAssignableToTypeOf(&netlink.TcU32Sel{}))
+				gomega.Expect(filterSel.Flags).To(gomega.Equal(uint8(netlink.TC_U32_TERMINAL)))
+				gomega.Expect(filterSel.Keys).To(gomega.HaveLen(3))
+				gomega.Expect(filterSel.Nkeys).To(gomega.Equal(uint8(3)))
 
 				// The filter should match to fd00:db8:abcd:1234:e000::/68 dst address in other words it should be:
 				// match 0xfd000db8/0xffffffff at 24
 				// match 0xabcd1234/0xffffffff at 28
 				// match 0xe0000000/0xf0000000 at 32
 				// (and last match discarded because it would be equivalent to a matchall/true condition at 36)
-				Expect(filterSel.Keys[0].Off).To(Equal(int32(24)))
-				Expect(filterSel.Keys[0].Val).To(Equal(uint32(4244639160)))
-				Expect(filterSel.Keys[0].Mask).To(Equal(uint32(4294967295)))
+				gomega.Expect(filterSel.Keys[0].Off).To(gomega.Equal(int32(24)))
+				gomega.Expect(filterSel.Keys[0].Val).To(gomega.Equal(uint32(4244639160)))
+				gomega.Expect(filterSel.Keys[0].Mask).To(gomega.Equal(uint32(4294967295)))
 
-				Expect(filterSel.Keys[1].Off).To(Equal(int32(28)))
-				Expect(filterSel.Keys[1].Val).To(Equal(uint32(2882343476)))
-				Expect(filterSel.Keys[1].Mask).To(Equal(uint32(4294967295)))
+				gomega.Expect(filterSel.Keys[1].Off).To(gomega.Equal(int32(28)))
+				gomega.Expect(filterSel.Keys[1].Val).To(gomega.Equal(uint32(2882343476)))
+				gomega.Expect(filterSel.Keys[1].Mask).To(gomega.Equal(uint32(4294967295)))
 
-				Expect(filterSel.Keys[2].Off).To(Equal(int32(32)))
-				Expect(filterSel.Keys[2].Val).To(Equal(uint32(3758096384)))
-				Expect(filterSel.Keys[2].Mask).To(Equal(uint32(4026531840)))
+				gomega.Expect(filterSel.Keys[2].Off).To(gomega.Equal(int32(32)))
+				gomega.Expect(filterSel.Keys[2].Val).To(gomega.Equal(uint32(3758096384)))
+				gomega.Expect(filterSel.Keys[2].Mask).To(gomega.Equal(uint32(4026531840)))
 
 				// traffic to 10.0.0.0/8 redirected to uncapped class
-				Expect(filters[1]).To(BeAssignableToTypeOf(&netlink.U32{}))
-				Expect(filters[1].(*netlink.U32).Actions).To(BeEmpty())
-				Expect(filters[1].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_IP)))
-				Expect(filters[1].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
-				Expect(filters[1].Attrs().Priority).To(Equal(uint16(16)))
-				Expect(filters[1].Attrs().Parent).To(Equal(qdiscs[0].Attrs().Handle))
-				Expect(filters[1].(*netlink.U32).ClassId).To(Equal(netlink.MakeHandle(1, ShapedClassMinorID)))
+				gomega.Expect(filters[1]).To(gomega.BeAssignableToTypeOf(&netlink.U32{}))
+				gomega.Expect(filters[1].(*netlink.U32).Actions).To(gomega.BeEmpty())
+				gomega.Expect(filters[1].Attrs().Protocol).To(gomega.Equal(uint16(syscall.ETH_P_IP)))
+				gomega.Expect(filters[1].Attrs().LinkIndex).To(gomega.Equal(ifbLink.Attrs().Index))
+				gomega.Expect(filters[1].Attrs().Priority).To(gomega.Equal(uint16(16)))
+				gomega.Expect(filters[1].Attrs().Parent).To(gomega.Equal(qdiscs[0].Attrs().Handle))
+				gomega.Expect(filters[1].(*netlink.U32).ClassId).To(gomega.Equal(netlink.MakeHandle(1, ShapedClassMinorID)))
 
 				filterSel = filters[1].(*netlink.U32).Sel
-				Expect(filterSel).To(BeAssignableToTypeOf(&netlink.TcU32Sel{}))
-				Expect(filterSel.Flags).To(Equal(uint8(netlink.TC_U32_TERMINAL)))
-				Expect(filterSel.Keys).To(HaveLen(1))
-				Expect(filterSel.Nkeys).To(Equal(uint8(1)))
+				gomega.Expect(filterSel).To(gomega.BeAssignableToTypeOf(&netlink.TcU32Sel{}))
+				gomega.Expect(filterSel.Flags).To(gomega.Equal(uint8(netlink.TC_U32_TERMINAL)))
+				gomega.Expect(filterSel.Keys).To(gomega.HaveLen(1))
+				gomega.Expect(filterSel.Nkeys).To(gomega.Equal(uint8(1)))
 
 				// The filter should match to 10.0.0.0/8 dst address in other words it should be:
 				// match 0a000000/ff000000 at 16
 				selKey := filterSel.Keys[0]
-				Expect(selKey.Val).To(Equal(uint32(10 * math.Pow(256, 3))))
-				Expect(selKey.Off).To(Equal(int32(16)))
-				Expect(selKey.Mask).To(Equal(uint32(255 * math.Pow(256, 3))))
+				gomega.Expect(selKey.Val).To(gomega.Equal(uint32(10 * math.Pow(256, 3))))
+				gomega.Expect(selKey.Off).To(gomega.Equal(int32(16)))
+				gomega.Expect(selKey.Mask).To(gomega.Equal(uint32(255 * math.Pow(256, 3))))
 
 				hostVethLink, err := netlink.LinkByName(hostIfname)
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 				qdiscFilters, err := netlink.FilterList(hostVethLink, netlink.MakeHandle(0xffff, 0))
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-				Expect(qdiscFilters).To(HaveLen(1))
-				Expect(qdiscFilters[0].(*netlink.U32).Actions[0].(*netlink.MirredAction).Ifindex).To(Equal(ifbLink.Attrs().Index))
+				gomega.Expect(qdiscFilters).To(gomega.HaveLen(1))
+				gomega.Expect(qdiscFilters[0].(*netlink.U32).Actions[0].(*netlink.MirredAction).Ifindex).To(gomega.Equal(ifbLink.Attrs().Index))
 
 				return nil
-			})).To(Succeed())
+			})).To(gomega.Succeed())
 
 			// Container ingress (host egress)
-			Expect(hostNs.Do(func(n ns.NetNS) error {
-				defer GinkgoRecover()
+			gomega.Expect(hostNs.Do(func(n ns.NetNS) error {
+				defer ginkgo.GinkgoRecover()
 
 				vethLink, err := netlink.LinkByName(hostIfname)
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 				qdiscs, err := netlink.QdiscList(vethLink)
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-				Expect(qdiscs).To(HaveLen(2))
-				Expect(qdiscs[0].Attrs().LinkIndex).To(Equal(vethLink.Attrs().Index))
-				Expect(qdiscs[0]).To(BeAssignableToTypeOf(&netlink.Htb{}))
-				Expect(qdiscs[0].(*netlink.Htb).Defcls).To(Equal(uint32(UnShapedClassMinorID)))
+				gomega.Expect(qdiscs).To(gomega.HaveLen(2))
+				gomega.Expect(qdiscs[0].Attrs().LinkIndex).To(gomega.Equal(vethLink.Attrs().Index))
+				gomega.Expect(qdiscs[0]).To(gomega.BeAssignableToTypeOf(&netlink.Htb{}))
+				gomega.Expect(qdiscs[0].(*netlink.Htb).Defcls).To(gomega.Equal(uint32(UnShapedClassMinorID)))
 
 				classes, err := netlink.ClassList(vethLink, qdiscs[0].Attrs().Handle)
 
-				Expect(err).NotTo(HaveOccurred())
-				Expect(classes).To(HaveLen(2))
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
+				gomega.Expect(classes).To(gomega.HaveLen(2))
 
 				// Uncapped class
-				Expect(classes[0]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
-				Expect(classes[0].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, UnShapedClassMinorID)))
-				Expect(classes[0].(*netlink.HtbClass).Rate).To(Equal(UncappedRate))
-				Expect(classes[0].(*netlink.HtbClass).Buffer).To(Equal(uint32(0)))
-				Expect(classes[0].(*netlink.HtbClass).Ceil).To(Equal(UncappedRate))
-				Expect(classes[0].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
+				gomega.Expect(classes[0]).To(gomega.BeAssignableToTypeOf(&netlink.HtbClass{}))
+				gomega.Expect(classes[0].(*netlink.HtbClass).Handle).To(gomega.Equal(netlink.MakeHandle(1, UnShapedClassMinorID)))
+				gomega.Expect(classes[0].(*netlink.HtbClass).Rate).To(gomega.Equal(UncappedRate))
+				gomega.Expect(classes[0].(*netlink.HtbClass).Buffer).To(gomega.Equal(uint32(0)))
+				gomega.Expect(classes[0].(*netlink.HtbClass).Ceil).To(gomega.Equal(UncappedRate))
+				gomega.Expect(classes[0].(*netlink.HtbClass).Cbuffer).To(gomega.Equal(uint32(0)))
 
 				// Class with traffic shapping settings
-				Expect(classes[1]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
-				Expect(classes[1].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, ShapedClassMinorID)))
-				Expect(classes[1].(*netlink.HtbClass).Rate).To(Equal(uint64(1)))
-				// Expect(classes[1].(*netlink.HtbClass).Buffer).To(Equal(uint32(15625000)))
-				Expect(classes[1].(*netlink.HtbClass).Ceil).To(Equal(uint64(2)))
-				// Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
+				gomega.Expect(classes[1]).To(gomega.BeAssignableToTypeOf(&netlink.HtbClass{}))
+				gomega.Expect(classes[1].(*netlink.HtbClass).Handle).To(gomega.Equal(netlink.MakeHandle(1, ShapedClassMinorID)))
+				gomega.Expect(classes[1].(*netlink.HtbClass).Rate).To(gomega.Equal(uint64(1)))
+				// gomega.Expect(classes[1].(*netlink.HtbClass).Buffer).To(gomega.Equal(uint32(15625000)))
+				gomega.Expect(classes[1].(*netlink.HtbClass).Ceil).To(gomega.Equal(uint64(2)))
+				// gomega.Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(gomega.Equal(uint32(0)))
 
 				filters, err := netlink.FilterList(vethLink, qdiscs[0].Attrs().Handle)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(filters).To(HaveLen(2))
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
+				gomega.Expect(filters).To(gomega.HaveLen(2))
 
 				// traffic to fd00:db8:abcd:1234:e000::/68 redirected to uncapped class
-				Expect(filters[0]).To(BeAssignableToTypeOf(&netlink.U32{}))
-				Expect(filters[0].(*netlink.U32).Actions).To(BeEmpty())
-				Expect(filters[0].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_IPV6)))
-				Expect(filters[0].Attrs().LinkIndex).To(Equal(vethLink.Attrs().Index))
-				Expect(filters[0].Attrs().Priority).To(Equal(uint16(15)))
-				Expect(filters[0].Attrs().Parent).To(Equal(qdiscs[0].Attrs().Handle))
-				Expect(filters[0].(*netlink.U32).ClassId).To(Equal(netlink.MakeHandle(1, ShapedClassMinorID)))
+				gomega.Expect(filters[0]).To(gomega.BeAssignableToTypeOf(&netlink.U32{}))
+				gomega.Expect(filters[0].(*netlink.U32).Actions).To(gomega.BeEmpty())
+				gomega.Expect(filters[0].Attrs().Protocol).To(gomega.Equal(uint16(syscall.ETH_P_IPV6)))
+				gomega.Expect(filters[0].Attrs().LinkIndex).To(gomega.Equal(vethLink.Attrs().Index))
+				gomega.Expect(filters[0].Attrs().Priority).To(gomega.Equal(uint16(15)))
+				gomega.Expect(filters[0].Attrs().Parent).To(gomega.Equal(qdiscs[0].Attrs().Handle))
+				gomega.Expect(filters[0].(*netlink.U32).ClassId).To(gomega.Equal(netlink.MakeHandle(1, ShapedClassMinorID)))
 
 				filterSel := filters[0].(*netlink.U32).Sel
-				Expect(filterSel).To(BeAssignableToTypeOf(&netlink.TcU32Sel{}))
-				Expect(filterSel.Flags).To(Equal(uint8(netlink.TC_U32_TERMINAL)))
-				Expect(filterSel.Keys).To(HaveLen(3))
-				Expect(filterSel.Nkeys).To(Equal(uint8(3)))
+				gomega.Expect(filterSel).To(gomega.BeAssignableToTypeOf(&netlink.TcU32Sel{}))
+				gomega.Expect(filterSel.Flags).To(gomega.Equal(uint8(netlink.TC_U32_TERMINAL)))
+				gomega.Expect(filterSel.Keys).To(gomega.HaveLen(3))
+				gomega.Expect(filterSel.Nkeys).To(gomega.Equal(uint8(3)))
 
 				// The filter should match to fd00:db8:abcd:1234:e000::/68 dst address in other words it should be:
 				// match 0xfd000db8/0xffffffff at 24
 				// match 0xabcd1234/0xffffffff at 28
 				// match 0xe0000000/0xf0000000 at 32
 				// (and last match discarded because it would be equivalent to a matchall/true condition at 36)
-				Expect(filterSel.Keys[0].Off).To(Equal(int32(24)))
-				Expect(filterSel.Keys[0].Val).To(Equal(uint32(4244639160)))
-				Expect(filterSel.Keys[0].Mask).To(Equal(uint32(4294967295)))
+				gomega.Expect(filterSel.Keys[0].Off).To(gomega.Equal(int32(24)))
+				gomega.Expect(filterSel.Keys[0].Val).To(gomega.Equal(uint32(4244639160)))
+				gomega.Expect(filterSel.Keys[0].Mask).To(gomega.Equal(uint32(4294967295)))
 
-				Expect(filterSel.Keys[1].Off).To(Equal(int32(28)))
-				Expect(filterSel.Keys[1].Val).To(Equal(uint32(2882343476)))
-				Expect(filterSel.Keys[1].Mask).To(Equal(uint32(4294967295)))
+				gomega.Expect(filterSel.Keys[1].Off).To(gomega.Equal(int32(28)))
+				gomega.Expect(filterSel.Keys[1].Val).To(gomega.Equal(uint32(2882343476)))
+				gomega.Expect(filterSel.Keys[1].Mask).To(gomega.Equal(uint32(4294967295)))
 
-				Expect(filterSel.Keys[2].Off).To(Equal(int32(32)))
-				Expect(filterSel.Keys[2].Val).To(Equal(uint32(3758096384)))
-				Expect(filterSel.Keys[2].Mask).To(Equal(uint32(4026531840)))
+				gomega.Expect(filterSel.Keys[2].Off).To(gomega.Equal(int32(32)))
+				gomega.Expect(filterSel.Keys[2].Val).To(gomega.Equal(uint32(3758096384)))
+				gomega.Expect(filterSel.Keys[2].Mask).To(gomega.Equal(uint32(4026531840)))
 
 				// traffic to 10.0.0.0/8 redirected to uncapped class
-				Expect(filters[1]).To(BeAssignableToTypeOf(&netlink.U32{}))
-				Expect(filters[1].(*netlink.U32).Actions).To(BeEmpty())
-				Expect(filters[1].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_IP)))
-				Expect(filters[1].Attrs().LinkIndex).To(Equal(vethLink.Attrs().Index))
-				Expect(filters[1].Attrs().Priority).To(Equal(uint16(16)))
-				Expect(filters[1].Attrs().Parent).To(Equal(qdiscs[0].Attrs().Handle))
-				Expect(filters[1].(*netlink.U32).ClassId).To(Equal(netlink.MakeHandle(1, ShapedClassMinorID)))
+				gomega.Expect(filters[1]).To(gomega.BeAssignableToTypeOf(&netlink.U32{}))
+				gomega.Expect(filters[1].(*netlink.U32).Actions).To(gomega.BeEmpty())
+				gomega.Expect(filters[1].Attrs().Protocol).To(gomega.Equal(uint16(syscall.ETH_P_IP)))
+				gomega.Expect(filters[1].Attrs().LinkIndex).To(gomega.Equal(vethLink.Attrs().Index))
+				gomega.Expect(filters[1].Attrs().Priority).To(gomega.Equal(uint16(16)))
+				gomega.Expect(filters[1].Attrs().Parent).To(gomega.Equal(qdiscs[0].Attrs().Handle))
+				gomega.Expect(filters[1].(*netlink.U32).ClassId).To(gomega.Equal(netlink.MakeHandle(1, ShapedClassMinorID)))
 
 				filterSel = filters[1].(*netlink.U32).Sel
-				Expect(filterSel).To(BeAssignableToTypeOf(&netlink.TcU32Sel{}))
-				Expect(filterSel.Flags).To(Equal(uint8(netlink.TC_U32_TERMINAL)))
-				Expect(filterSel.Keys).To(HaveLen(1))
-				Expect(filterSel.Nkeys).To(Equal(uint8(1)))
+				gomega.Expect(filterSel).To(gomega.BeAssignableToTypeOf(&netlink.TcU32Sel{}))
+				gomega.Expect(filterSel.Flags).To(gomega.Equal(uint8(netlink.TC_U32_TERMINAL)))
+				gomega.Expect(filterSel.Keys).To(gomega.HaveLen(1))
+				gomega.Expect(filterSel.Nkeys).To(gomega.Equal(uint8(1)))
 
 				// The filter should match to 10.0.0.0/8 dst address in other words it should be:
 				// match 0a000000/ff000000 at 16
 				selKey := filterSel.Keys[0]
-				Expect(selKey.Val).To(Equal(uint32(10 * math.Pow(256, 3))))
-				Expect(selKey.Off).To(Equal(int32(16)))
-				Expect(selKey.Mask).To(Equal(uint32(255 * math.Pow(256, 3))))
+				gomega.Expect(selKey.Val).To(gomega.Equal(uint32(10 * math.Pow(256, 3))))
+				gomega.Expect(selKey.Off).To(gomega.Equal(int32(16)))
+				gomega.Expect(selKey.Mask).To(gomega.Equal(uint32(255 * math.Pow(256, 3))))
 
 				return nil
-			})).To(Succeed())
+			})).To(gomega.Succeed())
 		})
 
-		It(fmt.Sprintf("[%s] does not apply ingress when disabled", ver), func() {
+		ginkgo.It(fmt.Sprintf("[%s] does not apply ingress when disabled", ver), func() {
 			conf := fmt.Sprintf(`{
 			"cniVersion": "%s",
 			"name": "cni-plugin-bandwidth-test",
@@ -779,133 +779,133 @@ var _ = Describe("bandwidth test", func() {
 			}
 
 			// check container egress side / host ingress side, we expect to get some QoS setup there
-			Expect(hostNs.Do(func(netNS ns.NetNS) error {
-				defer GinkgoRecover()
+			gomega.Expect(hostNs.Do(func(netNS ns.NetNS) error {
+				defer ginkgo.GinkgoRecover()
 
 				_, out, err := testutils.CmdAdd(containerNs.Path(), args.ContainerID, ifbDeviceName, []byte(conf), func() error { return cmdAdd(args) })
-				Expect(err).NotTo(HaveOccurred(), string(out))
+				gomega.Expect(err).NotTo(gomega.HaveOccurred(), string(out))
 
 				ifbLink, err := netlink.LinkByName(ifbDeviceName)
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 				qdiscs, err := netlink.QdiscList(ifbLink)
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-				Expect(qdiscs).To(HaveLen(1))
-				Expect(qdiscs[0].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
-				Expect(qdiscs[0]).To(BeAssignableToTypeOf(&netlink.Htb{}))
-				Expect(qdiscs[0].(*netlink.Htb).Defcls).To(Equal(uint32(ShapedClassMinorID)))
+				gomega.Expect(qdiscs).To(gomega.HaveLen(1))
+				gomega.Expect(qdiscs[0].Attrs().LinkIndex).To(gomega.Equal(ifbLink.Attrs().Index))
+				gomega.Expect(qdiscs[0]).To(gomega.BeAssignableToTypeOf(&netlink.Htb{}))
+				gomega.Expect(qdiscs[0].(*netlink.Htb).Defcls).To(gomega.Equal(uint32(ShapedClassMinorID)))
 				classes, err := netlink.ClassList(ifbLink, qdiscs[0].Attrs().Handle)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(classes).To(HaveLen(2))
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
+				gomega.Expect(classes).To(gomega.HaveLen(2))
 
 				// Uncapped class
-				Expect(classes[0]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
-				Expect(classes[0].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, 1)))
-				Expect(classes[0].(*netlink.HtbClass).Rate).To(Equal(UncappedRate))
-				Expect(classes[0].(*netlink.HtbClass).Buffer).To(Equal(uint32(0)))
-				Expect(classes[0].(*netlink.HtbClass).Ceil).To(Equal(UncappedRate))
-				Expect(classes[0].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
+				gomega.Expect(classes[0]).To(gomega.BeAssignableToTypeOf(&netlink.HtbClass{}))
+				gomega.Expect(classes[0].(*netlink.HtbClass).Handle).To(gomega.Equal(netlink.MakeHandle(1, 1)))
+				gomega.Expect(classes[0].(*netlink.HtbClass).Rate).To(gomega.Equal(UncappedRate))
+				gomega.Expect(classes[0].(*netlink.HtbClass).Buffer).To(gomega.Equal(uint32(0)))
+				gomega.Expect(classes[0].(*netlink.HtbClass).Ceil).To(gomega.Equal(UncappedRate))
+				gomega.Expect(classes[0].(*netlink.HtbClass).Cbuffer).To(gomega.Equal(uint32(0)))
 
 				// Class with traffic shapping settings
-				Expect(classes[1]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
-				Expect(classes[1].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, ShapedClassMinorID)))
-				Expect(classes[1].(*netlink.HtbClass).Rate).To(Equal(uint64(1000)))
-				// Expect(classes[1].(*netlink.HtbClass).Buffer).To(Equal(uint32(7812500)))
-				Expect(classes[1].(*netlink.HtbClass).Ceil).To(Equal(uint64(2000)))
-				// Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
+				gomega.Expect(classes[1]).To(gomega.BeAssignableToTypeOf(&netlink.HtbClass{}))
+				gomega.Expect(classes[1].(*netlink.HtbClass).Handle).To(gomega.Equal(netlink.MakeHandle(1, ShapedClassMinorID)))
+				gomega.Expect(classes[1].(*netlink.HtbClass).Rate).To(gomega.Equal(uint64(1000)))
+				// gomega.Expect(classes[1].(*netlink.HtbClass).Buffer).To(gomega.Equal(uint32(7812500)))
+				gomega.Expect(classes[1].(*netlink.HtbClass).Ceil).To(gomega.Equal(uint64(2000)))
+				// gomega.Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(gomega.Equal(uint32(0)))
 
 				filters, err := netlink.FilterList(ifbLink, qdiscs[0].Attrs().Handle)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(filters).To(HaveLen(2))
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
+				gomega.Expect(filters).To(gomega.HaveLen(2))
 
 				// traffic to fd00:db8:abcd:1234:e000::/68 redirected to uncapped class
-				Expect(filters[0]).To(BeAssignableToTypeOf(&netlink.U32{}))
-				Expect(filters[0].(*netlink.U32).Actions).To(BeEmpty())
-				Expect(filters[0].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_IPV6)))
-				Expect(filters[0].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
-				Expect(filters[0].Attrs().Priority).To(Equal(uint16(15)))
-				Expect(filters[0].Attrs().Parent).To(Equal(qdiscs[0].Attrs().Handle))
-				Expect(filters[0].(*netlink.U32).ClassId).To(Equal(netlink.MakeHandle(1, 1)))
+				gomega.Expect(filters[0]).To(gomega.BeAssignableToTypeOf(&netlink.U32{}))
+				gomega.Expect(filters[0].(*netlink.U32).Actions).To(gomega.BeEmpty())
+				gomega.Expect(filters[0].Attrs().Protocol).To(gomega.Equal(uint16(syscall.ETH_P_IPV6)))
+				gomega.Expect(filters[0].Attrs().LinkIndex).To(gomega.Equal(ifbLink.Attrs().Index))
+				gomega.Expect(filters[0].Attrs().Priority).To(gomega.Equal(uint16(15)))
+				gomega.Expect(filters[0].Attrs().Parent).To(gomega.Equal(qdiscs[0].Attrs().Handle))
+				gomega.Expect(filters[0].(*netlink.U32).ClassId).To(gomega.Equal(netlink.MakeHandle(1, 1)))
 
 				filterSel := filters[0].(*netlink.U32).Sel
-				Expect(filterSel).To(BeAssignableToTypeOf(&netlink.TcU32Sel{}))
-				Expect(filterSel.Flags).To(Equal(uint8(netlink.TC_U32_TERMINAL)))
-				Expect(filterSel.Keys).To(HaveLen(3))
-				Expect(filterSel.Nkeys).To(Equal(uint8(3)))
+				gomega.Expect(filterSel).To(gomega.BeAssignableToTypeOf(&netlink.TcU32Sel{}))
+				gomega.Expect(filterSel.Flags).To(gomega.Equal(uint8(netlink.TC_U32_TERMINAL)))
+				gomega.Expect(filterSel.Keys).To(gomega.HaveLen(3))
+				gomega.Expect(filterSel.Nkeys).To(gomega.Equal(uint8(3)))
 
 				// The filter should match to fd00:db8:abcd:1234:e000::/68 dst address in other words it should be:
 				// match 0xfd000db8/0xffffffff at 24
 				// match 0xabcd1234/0xffffffff at 28
 				// match 0xe0000000/0xf0000000 at 32
 				// (and last match discarded because it would be equivalent to a matchall/true condition at 36)
-				Expect(filterSel.Keys[0].Off).To(Equal(int32(24)))
-				Expect(filterSel.Keys[0].Val).To(Equal(uint32(4244639160)))
-				Expect(filterSel.Keys[0].Mask).To(Equal(uint32(4294967295)))
+				gomega.Expect(filterSel.Keys[0].Off).To(gomega.Equal(int32(24)))
+				gomega.Expect(filterSel.Keys[0].Val).To(gomega.Equal(uint32(4244639160)))
+				gomega.Expect(filterSel.Keys[0].Mask).To(gomega.Equal(uint32(4294967295)))
 
-				Expect(filterSel.Keys[1].Off).To(Equal(int32(28)))
-				Expect(filterSel.Keys[1].Val).To(Equal(uint32(2882343476)))
-				Expect(filterSel.Keys[1].Mask).To(Equal(uint32(4294967295)))
+				gomega.Expect(filterSel.Keys[1].Off).To(gomega.Equal(int32(28)))
+				gomega.Expect(filterSel.Keys[1].Val).To(gomega.Equal(uint32(2882343476)))
+				gomega.Expect(filterSel.Keys[1].Mask).To(gomega.Equal(uint32(4294967295)))
 
-				Expect(filterSel.Keys[2].Off).To(Equal(int32(32)))
-				Expect(filterSel.Keys[2].Val).To(Equal(uint32(3758096384)))
-				Expect(filterSel.Keys[2].Mask).To(Equal(uint32(4026531840)))
+				gomega.Expect(filterSel.Keys[2].Off).To(gomega.Equal(int32(32)))
+				gomega.Expect(filterSel.Keys[2].Val).To(gomega.Equal(uint32(3758096384)))
+				gomega.Expect(filterSel.Keys[2].Mask).To(gomega.Equal(uint32(4026531840)))
 
 				// traffic to 10.0.0.0/8 redirected to uncapped class
-				Expect(filters[1]).To(BeAssignableToTypeOf(&netlink.U32{}))
-				Expect(filters[1].(*netlink.U32).Actions).To(BeEmpty())
-				Expect(filters[1].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_IP)))
-				Expect(filters[1].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
-				Expect(filters[1].Attrs().Priority).To(Equal(uint16(16)))
-				Expect(filters[1].Attrs().Parent).To(Equal(qdiscs[0].Attrs().Handle))
-				Expect(filters[1].(*netlink.U32).ClassId).To(Equal(netlink.MakeHandle(1, 1)))
+				gomega.Expect(filters[1]).To(gomega.BeAssignableToTypeOf(&netlink.U32{}))
+				gomega.Expect(filters[1].(*netlink.U32).Actions).To(gomega.BeEmpty())
+				gomega.Expect(filters[1].Attrs().Protocol).To(gomega.Equal(uint16(syscall.ETH_P_IP)))
+				gomega.Expect(filters[1].Attrs().LinkIndex).To(gomega.Equal(ifbLink.Attrs().Index))
+				gomega.Expect(filters[1].Attrs().Priority).To(gomega.Equal(uint16(16)))
+				gomega.Expect(filters[1].Attrs().Parent).To(gomega.Equal(qdiscs[0].Attrs().Handle))
+				gomega.Expect(filters[1].(*netlink.U32).ClassId).To(gomega.Equal(netlink.MakeHandle(1, 1)))
 
 				filterSel = filters[1].(*netlink.U32).Sel
-				Expect(filterSel).To(BeAssignableToTypeOf(&netlink.TcU32Sel{}))
-				Expect(filterSel.Flags).To(Equal(uint8(netlink.TC_U32_TERMINAL)))
-				Expect(filterSel.Keys).To(HaveLen(1))
-				Expect(filterSel.Nkeys).To(Equal(uint8(1)))
+				gomega.Expect(filterSel).To(gomega.BeAssignableToTypeOf(&netlink.TcU32Sel{}))
+				gomega.Expect(filterSel.Flags).To(gomega.Equal(uint8(netlink.TC_U32_TERMINAL)))
+				gomega.Expect(filterSel.Keys).To(gomega.HaveLen(1))
+				gomega.Expect(filterSel.Nkeys).To(gomega.Equal(uint8(1)))
 
 				// The filter should match to 10.0.0.0/8 dst address in other words it should be:
 				// match 0a000000/ff000000 at 16
 				selKey := filterSel.Keys[0]
-				Expect(selKey.Val).To(Equal(uint32(10 * math.Pow(256, 3))))
-				Expect(selKey.Off).To(Equal(int32(16)))
-				Expect(selKey.Mask).To(Equal(uint32(255 * math.Pow(256, 3))))
+				gomega.Expect(selKey.Val).To(gomega.Equal(uint32(10 * math.Pow(256, 3))))
+				gomega.Expect(selKey.Off).To(gomega.Equal(int32(16)))
+				gomega.Expect(selKey.Mask).To(gomega.Equal(uint32(255 * math.Pow(256, 3))))
 
 				// check traffic mirroring from veth to ifb
 				hostVethLink, err := netlink.LinkByName(hostIfname)
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 				qdiscFilters, err := netlink.FilterList(hostVethLink, netlink.MakeHandle(0xffff, 0))
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-				Expect(qdiscFilters).To(HaveLen(1))
-				Expect(qdiscFilters[0].(*netlink.U32).Actions[0].(*netlink.MirredAction).Ifindex).To(Equal(ifbLink.Attrs().Index))
+				gomega.Expect(qdiscFilters).To(gomega.HaveLen(1))
+				gomega.Expect(qdiscFilters[0].(*netlink.U32).Actions[0].(*netlink.MirredAction).Ifindex).To(gomega.Equal(ifbLink.Attrs().Index))
 
 				return nil
-			})).To(Succeed())
+			})).To(gomega.Succeed())
 
 			// check container ingress side / host egress side, we should not have any htb qdisc/classes/filters defined for the host veth
 			// only the qdisc ingress + a noqueue qdisc
-			Expect(hostNs.Do(func(n ns.NetNS) error {
-				defer GinkgoRecover()
+			gomega.Expect(hostNs.Do(func(n ns.NetNS) error {
+				defer ginkgo.GinkgoRecover()
 
 				containerIfLink, err := netlink.LinkByName(hostIfname)
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 				qdiscs, err := netlink.QdiscList(containerIfLink)
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-				Expect(qdiscs).To(HaveLen(2))
-				Expect(qdiscs[0]).NotTo(BeAssignableToTypeOf(&netlink.Htb{}))
-				Expect(qdiscs[1]).NotTo(BeAssignableToTypeOf(&netlink.Htb{}))
+				gomega.Expect(qdiscs).To(gomega.HaveLen(2))
+				gomega.Expect(qdiscs[0]).NotTo(gomega.BeAssignableToTypeOf(&netlink.Htb{}))
+				gomega.Expect(qdiscs[1]).NotTo(gomega.BeAssignableToTypeOf(&netlink.Htb{}))
 
 				return nil
-			})).To(Succeed())
+			})).To(gomega.Succeed())
 		})
 
-		It(fmt.Sprintf("[%s] does not apply egress when disabled", ver), func() {
+		ginkgo.It(fmt.Sprintf("[%s] does not apply egress when disabled", ver), func() {
 			conf := fmt.Sprintf(`{
 				"cniVersion": "%s",
 				"name": "cni-plugin-bandwidth-test",
@@ -944,69 +944,69 @@ var _ = Describe("bandwidth test", func() {
 				StdinData:   []byte(conf),
 			}
 
-			Expect(hostNs.Do(func(netNS ns.NetNS) error {
-				defer GinkgoRecover()
+			gomega.Expect(hostNs.Do(func(netNS ns.NetNS) error {
+				defer ginkgo.GinkgoRecover()
 
 				_, out, err := testutils.CmdAdd(containerNs.Path(), args.ContainerID, ifbDeviceName, []byte(conf), func() error { return cmdAdd(args) })
-				Expect(err).NotTo(HaveOccurred(), string(out))
+				gomega.Expect(err).NotTo(gomega.HaveOccurred(), string(out))
 
 				// Since we do not setup any egress QoS, no ifb interface should be created at all
 				_, err = netlink.LinkByName(ifbDeviceName)
-				Expect(err).To(HaveOccurred())
+				gomega.Expect(err).To(gomega.HaveOccurred())
 
 				return nil
-			})).To(Succeed())
+			})).To(gomega.Succeed())
 
-			Expect(hostNs.Do(func(n ns.NetNS) error {
-				defer GinkgoRecover()
+			gomega.Expect(hostNs.Do(func(n ns.NetNS) error {
+				defer ginkgo.GinkgoRecover()
 
 				containerIfLink, err := netlink.LinkByName(hostIfname)
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 				// Only one qdisc should be found this time, no ingress qdisc should be there
 				qdiscs, err := netlink.QdiscList(containerIfLink)
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-				Expect(qdiscs).To(HaveLen(1))
-				Expect(qdiscs[0].Attrs().LinkIndex).To(Equal(containerIfLink.Attrs().Index))
-				Expect(qdiscs[0]).To(BeAssignableToTypeOf(&netlink.Htb{}))
-				Expect(qdiscs[0].(*netlink.Htb).Defcls).To(Equal(uint32(ShapedClassMinorID)))
+				gomega.Expect(qdiscs).To(gomega.HaveLen(1))
+				gomega.Expect(qdiscs[0].Attrs().LinkIndex).To(gomega.Equal(containerIfLink.Attrs().Index))
+				gomega.Expect(qdiscs[0]).To(gomega.BeAssignableToTypeOf(&netlink.Htb{}))
+				gomega.Expect(qdiscs[0].(*netlink.Htb).Defcls).To(gomega.Equal(uint32(ShapedClassMinorID)))
 
 				classes, err := netlink.ClassList(containerIfLink, qdiscs[0].Attrs().Handle)
 
-				Expect(err).NotTo(HaveOccurred())
-				Expect(classes).To(HaveLen(2))
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
+				gomega.Expect(classes).To(gomega.HaveLen(2))
 
 				// Uncapped class
-				Expect(classes[0]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
-				Expect(classes[0].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, 1)))
-				Expect(classes[0].(*netlink.HtbClass).Rate).To(Equal(UncappedRate))
-				Expect(classes[0].(*netlink.HtbClass).Buffer).To(Equal(uint32(0)))
-				Expect(classes[0].(*netlink.HtbClass).Ceil).To(Equal(UncappedRate))
-				Expect(classes[0].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
+				gomega.Expect(classes[0]).To(gomega.BeAssignableToTypeOf(&netlink.HtbClass{}))
+				gomega.Expect(classes[0].(*netlink.HtbClass).Handle).To(gomega.Equal(netlink.MakeHandle(1, 1)))
+				gomega.Expect(classes[0].(*netlink.HtbClass).Rate).To(gomega.Equal(UncappedRate))
+				gomega.Expect(classes[0].(*netlink.HtbClass).Buffer).To(gomega.Equal(uint32(0)))
+				gomega.Expect(classes[0].(*netlink.HtbClass).Ceil).To(gomega.Equal(UncappedRate))
+				gomega.Expect(classes[0].(*netlink.HtbClass).Cbuffer).To(gomega.Equal(uint32(0)))
 
 				// Class with traffic shapping settings
-				Expect(classes[1]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
-				Expect(classes[1].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, uint16(qdiscs[0].(*netlink.Htb).Defcls))))
-				Expect(classes[1].(*netlink.HtbClass).Rate).To(Equal(uint64(1000)))
-				// Expect(classes[1].(*netlink.HtbClass).Buffer).To(Equal(uint32(15625000)))
-				Expect(classes[1].(*netlink.HtbClass).Ceil).To(Equal(uint64(2000)))
-				// Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
+				gomega.Expect(classes[1]).To(gomega.BeAssignableToTypeOf(&netlink.HtbClass{}))
+				gomega.Expect(classes[1].(*netlink.HtbClass).Handle).To(gomega.Equal(netlink.MakeHandle(1, uint16(qdiscs[0].(*netlink.Htb).Defcls))))
+				gomega.Expect(classes[1].(*netlink.HtbClass).Rate).To(gomega.Equal(uint64(1000)))
+				// gomega.Expect(classes[1].(*netlink.HtbClass).Buffer).To(gomega.Equal(uint32(15625000)))
+				gomega.Expect(classes[1].(*netlink.HtbClass).Ceil).To(gomega.Equal(uint64(2000)))
+				// gomega.Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(gomega.Equal(uint32(0)))
 
 				// No subnets are exluded in this example so we should not get any filter
 				filters, err := netlink.FilterList(containerIfLink, qdiscs[0].Attrs().Handle)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(filters).To(BeEmpty())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
+				gomega.Expect(filters).To(gomega.BeEmpty())
 
 				// Just check no mirroring is setup
 				qdiscFilters, err := netlink.FilterList(containerIfLink, netlink.MakeHandle(0xffff, 0))
-				Expect(err).NotTo(HaveOccurred())
-				Expect(qdiscFilters).To(BeEmpty())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
+				gomega.Expect(qdiscFilters).To(gomega.BeEmpty())
 				return nil
-			})).To(Succeed())
+			})).To(gomega.Succeed())
 		})
 
-		It(fmt.Sprintf("[%s] works with a Veth pair using runtime config", ver), func() {
+		ginkgo.It(fmt.Sprintf("[%s] works with a Veth pair using runtime config", ver), func() {
 			conf := fmt.Sprintf(`{
 			"cniVersion": "%s",
 			"name": "cni-plugin-bandwidth-test",
@@ -1050,155 +1050,155 @@ var _ = Describe("bandwidth test", func() {
 				StdinData:   []byte(conf),
 			}
 
-			Expect(hostNs.Do(func(netNS ns.NetNS) error {
-				defer GinkgoRecover()
+			gomega.Expect(hostNs.Do(func(netNS ns.NetNS) error {
+				defer ginkgo.GinkgoRecover()
 				r, out, err := testutils.CmdAdd(containerNs.Path(), args.ContainerID, "", []byte(conf), func() error { return cmdAdd(args) })
-				Expect(err).NotTo(HaveOccurred(), string(out))
+				gomega.Expect(err).NotTo(gomega.HaveOccurred(), string(out))
 				result, err := types100.GetResult(r)
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-				Expect(result.Interfaces).To(HaveLen(3))
-				Expect(result.Interfaces[2].Name).To(Equal(ifbDeviceName))
-				Expect(result.Interfaces[2].Sandbox).To(Equal(""))
+				gomega.Expect(result.Interfaces).To(gomega.HaveLen(3))
+				gomega.Expect(result.Interfaces[2].Name).To(gomega.Equal(ifbDeviceName))
+				gomega.Expect(result.Interfaces[2].Sandbox).To(gomega.Equal(""))
 
 				ifbLink, err := netlink.LinkByName(ifbDeviceName)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(ifbLink.Attrs().MTU).To(Equal(hostIfaceMTU))
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
+				gomega.Expect(ifbLink.Attrs().MTU).To(gomega.Equal(hostIfaceMTU))
 
 				qdiscs, err := netlink.QdiscList(ifbLink)
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-				Expect(qdiscs).To(HaveLen(1))
-				Expect(qdiscs[0].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
-				Expect(qdiscs[0]).To(BeAssignableToTypeOf(&netlink.Htb{}))
-				Expect(qdiscs[0].(*netlink.Htb).Defcls).To(Equal(uint32(ShapedClassMinorID)))
+				gomega.Expect(qdiscs).To(gomega.HaveLen(1))
+				gomega.Expect(qdiscs[0].Attrs().LinkIndex).To(gomega.Equal(ifbLink.Attrs().Index))
+				gomega.Expect(qdiscs[0]).To(gomega.BeAssignableToTypeOf(&netlink.Htb{}))
+				gomega.Expect(qdiscs[0].(*netlink.Htb).Defcls).To(gomega.Equal(uint32(ShapedClassMinorID)))
 
 				classes, err := netlink.ClassList(ifbLink, qdiscs[0].Attrs().Handle)
 
-				Expect(err).NotTo(HaveOccurred())
-				Expect(classes).To(HaveLen(2))
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
+				gomega.Expect(classes).To(gomega.HaveLen(2))
 
 				// Uncapped class
-				Expect(classes[0]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
-				Expect(classes[0].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, 1)))
-				Expect(classes[0].(*netlink.HtbClass).Rate).To(Equal(UncappedRate))
-				Expect(classes[0].(*netlink.HtbClass).Buffer).To(Equal(uint32(0)))
-				Expect(classes[0].(*netlink.HtbClass).Ceil).To(Equal(UncappedRate))
-				Expect(classes[0].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
+				gomega.Expect(classes[0]).To(gomega.BeAssignableToTypeOf(&netlink.HtbClass{}))
+				gomega.Expect(classes[0].(*netlink.HtbClass).Handle).To(gomega.Equal(netlink.MakeHandle(1, 1)))
+				gomega.Expect(classes[0].(*netlink.HtbClass).Rate).To(gomega.Equal(UncappedRate))
+				gomega.Expect(classes[0].(*netlink.HtbClass).Buffer).To(gomega.Equal(uint32(0)))
+				gomega.Expect(classes[0].(*netlink.HtbClass).Ceil).To(gomega.Equal(UncappedRate))
+				gomega.Expect(classes[0].(*netlink.HtbClass).Cbuffer).To(gomega.Equal(uint32(0)))
 
 				// Class with traffic shapping settings
-				Expect(classes[1]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
-				Expect(classes[1].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, uint16(qdiscs[0].(*netlink.Htb).Defcls))))
-				Expect(classes[1].(*netlink.HtbClass).Rate).To(Equal(uint64(2)))
-				// Expect(classes[1].(*netlink.HtbClass).Buffer).To(Equal(uint32(7812500)))
-				Expect(classes[1].(*netlink.HtbClass).Ceil).To(Equal(uint64(4)))
-				// Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
+				gomega.Expect(classes[1]).To(gomega.BeAssignableToTypeOf(&netlink.HtbClass{}))
+				gomega.Expect(classes[1].(*netlink.HtbClass).Handle).To(gomega.Equal(netlink.MakeHandle(1, uint16(qdiscs[0].(*netlink.Htb).Defcls))))
+				gomega.Expect(classes[1].(*netlink.HtbClass).Rate).To(gomega.Equal(uint64(2)))
+				// gomega.Expect(classes[1].(*netlink.HtbClass).Buffer).To(gomega.Equal(uint32(7812500)))
+				gomega.Expect(classes[1].(*netlink.HtbClass).Ceil).To(gomega.Equal(uint64(4)))
+				// gomega.Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(gomega.Equal(uint32(0)))
 
 				filters, err := netlink.FilterList(ifbLink, qdiscs[0].Attrs().Handle)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(filters).To(HaveLen(1))
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
+				gomega.Expect(filters).To(gomega.HaveLen(1))
 
 				// traffic to 192.168.0.0/24 redirected to uncapped class
-				Expect(filters[0]).To(BeAssignableToTypeOf(&netlink.U32{}))
-				Expect(filters[0].(*netlink.U32).Actions).To(BeEmpty())
-				Expect(filters[0].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_IP)))
-				Expect(filters[0].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
-				Expect(filters[0].Attrs().Priority).To(Equal(uint16(16)))
-				Expect(filters[0].Attrs().Parent).To(Equal(qdiscs[0].Attrs().Handle))
-				Expect(filters[0].(*netlink.U32).ClassId).To(Equal(netlink.MakeHandle(1, 1)))
+				gomega.Expect(filters[0]).To(gomega.BeAssignableToTypeOf(&netlink.U32{}))
+				gomega.Expect(filters[0].(*netlink.U32).Actions).To(gomega.BeEmpty())
+				gomega.Expect(filters[0].Attrs().Protocol).To(gomega.Equal(uint16(syscall.ETH_P_IP)))
+				gomega.Expect(filters[0].Attrs().LinkIndex).To(gomega.Equal(ifbLink.Attrs().Index))
+				gomega.Expect(filters[0].Attrs().Priority).To(gomega.Equal(uint16(16)))
+				gomega.Expect(filters[0].Attrs().Parent).To(gomega.Equal(qdiscs[0].Attrs().Handle))
+				gomega.Expect(filters[0].(*netlink.U32).ClassId).To(gomega.Equal(netlink.MakeHandle(1, 1)))
 
 				filterSel := filters[0].(*netlink.U32).Sel
-				Expect(filterSel).To(BeAssignableToTypeOf(&netlink.TcU32Sel{}))
-				Expect(filterSel.Flags).To(Equal(uint8(netlink.TC_U32_TERMINAL)))
-				Expect(filterSel.Keys).To(HaveLen(1))
-				Expect(filterSel.Nkeys).To(Equal(uint8(1)))
+				gomega.Expect(filterSel).To(gomega.BeAssignableToTypeOf(&netlink.TcU32Sel{}))
+				gomega.Expect(filterSel.Flags).To(gomega.Equal(uint8(netlink.TC_U32_TERMINAL)))
+				gomega.Expect(filterSel.Keys).To(gomega.HaveLen(1))
+				gomega.Expect(filterSel.Nkeys).To(gomega.Equal(uint8(1)))
 
 				// The filter should match to 192.168.0.0/24 dst address in other words it should be:
 				// match c0a80000/ffffff00 at 16
 				selKey := filterSel.Keys[0]
-				Expect(selKey.Val).To(Equal(uint32(192*math.Pow(256, 3) + 168*math.Pow(256, 2))))
-				Expect(selKey.Off).To(Equal(int32(16)))
-				Expect(selKey.Mask).To(Equal(uint32(255*math.Pow(256, 3) + 255*math.Pow(256, 2) + 255*256)))
+				gomega.Expect(selKey.Val).To(gomega.Equal(uint32(192*math.Pow(256, 3) + 168*math.Pow(256, 2))))
+				gomega.Expect(selKey.Off).To(gomega.Equal(int32(16)))
+				gomega.Expect(selKey.Mask).To(gomega.Equal(uint32(255*math.Pow(256, 3) + 255*math.Pow(256, 2) + 255*256)))
 
 				hostVethLink, err := netlink.LinkByName(hostIfname)
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 				qdiscFilters, err := netlink.FilterList(hostVethLink, netlink.MakeHandle(0xffff, 0))
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-				Expect(qdiscFilters).To(HaveLen(1))
-				Expect(qdiscFilters[0].(*netlink.U32).Actions[0].(*netlink.MirredAction).Ifindex).To(Equal(ifbLink.Attrs().Index))
+				gomega.Expect(qdiscFilters).To(gomega.HaveLen(1))
+				gomega.Expect(qdiscFilters[0].(*netlink.U32).Actions[0].(*netlink.MirredAction).Ifindex).To(gomega.Equal(ifbLink.Attrs().Index))
 
 				return nil
-			})).To(Succeed())
+			})).To(gomega.Succeed())
 
 			// Container ingress (host egress)
-			Expect(hostNs.Do(func(n ns.NetNS) error {
-				defer GinkgoRecover()
+			gomega.Expect(hostNs.Do(func(n ns.NetNS) error {
+				defer ginkgo.GinkgoRecover()
 
 				vethLink, err := netlink.LinkByName(hostIfname)
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 				qdiscs, err := netlink.QdiscList(vethLink)
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-				Expect(qdiscs).To(HaveLen(2))
-				Expect(qdiscs[0].Attrs().LinkIndex).To(Equal(vethLink.Attrs().Index))
-				Expect(qdiscs[0]).To(BeAssignableToTypeOf(&netlink.Htb{}))
-				Expect(qdiscs[0].(*netlink.Htb).Defcls).To(Equal(uint32(ShapedClassMinorID)))
+				gomega.Expect(qdiscs).To(gomega.HaveLen(2))
+				gomega.Expect(qdiscs[0].Attrs().LinkIndex).To(gomega.Equal(vethLink.Attrs().Index))
+				gomega.Expect(qdiscs[0]).To(gomega.BeAssignableToTypeOf(&netlink.Htb{}))
+				gomega.Expect(qdiscs[0].(*netlink.Htb).Defcls).To(gomega.Equal(uint32(ShapedClassMinorID)))
 
 				classes, err := netlink.ClassList(vethLink, qdiscs[0].Attrs().Handle)
 
-				Expect(err).NotTo(HaveOccurred())
-				Expect(classes).To(HaveLen(2))
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
+				gomega.Expect(classes).To(gomega.HaveLen(2))
 
 				// Uncapped class
-				Expect(classes[0]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
-				Expect(classes[0].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, 1)))
-				Expect(classes[0].(*netlink.HtbClass).Rate).To(Equal(UncappedRate))
-				Expect(classes[0].(*netlink.HtbClass).Buffer).To(Equal(uint32(0)))
-				Expect(classes[0].(*netlink.HtbClass).Ceil).To(Equal(UncappedRate))
-				Expect(classes[0].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
+				gomega.Expect(classes[0]).To(gomega.BeAssignableToTypeOf(&netlink.HtbClass{}))
+				gomega.Expect(classes[0].(*netlink.HtbClass).Handle).To(gomega.Equal(netlink.MakeHandle(1, 1)))
+				gomega.Expect(classes[0].(*netlink.HtbClass).Rate).To(gomega.Equal(UncappedRate))
+				gomega.Expect(classes[0].(*netlink.HtbClass).Buffer).To(gomega.Equal(uint32(0)))
+				gomega.Expect(classes[0].(*netlink.HtbClass).Ceil).To(gomega.Equal(UncappedRate))
+				gomega.Expect(classes[0].(*netlink.HtbClass).Cbuffer).To(gomega.Equal(uint32(0)))
 
 				// Class with traffic shapping settings
-				Expect(classes[1]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
-				Expect(classes[1].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, uint16(qdiscs[0].(*netlink.Htb).Defcls))))
-				Expect(classes[1].(*netlink.HtbClass).Rate).To(Equal(uint64(1)))
-				// Expect(classes[1].(*netlink.HtbClass).Buffer).To(Equal(uint32(15625000)))
-				Expect(classes[1].(*netlink.HtbClass).Ceil).To(Equal(uint64(2)))
-				// Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
+				gomega.Expect(classes[1]).To(gomega.BeAssignableToTypeOf(&netlink.HtbClass{}))
+				gomega.Expect(classes[1].(*netlink.HtbClass).Handle).To(gomega.Equal(netlink.MakeHandle(1, uint16(qdiscs[0].(*netlink.Htb).Defcls))))
+				gomega.Expect(classes[1].(*netlink.HtbClass).Rate).To(gomega.Equal(uint64(1)))
+				// gomega.Expect(classes[1].(*netlink.HtbClass).Buffer).To(gomega.Equal(uint32(15625000)))
+				gomega.Expect(classes[1].(*netlink.HtbClass).Ceil).To(gomega.Equal(uint64(2)))
+				// gomega.Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(gomega.Equal(uint32(0)))
 
 				filters, err := netlink.FilterList(vethLink, qdiscs[0].Attrs().Handle)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(filters).To(HaveLen(1))
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
+				gomega.Expect(filters).To(gomega.HaveLen(1))
 
 				// traffic to 192.168.0.0/24 redirected to uncapped class
-				Expect(filters[0]).To(BeAssignableToTypeOf(&netlink.U32{}))
-				Expect(filters[0].(*netlink.U32).Actions).To(BeEmpty())
-				Expect(filters[0].Attrs().Protocol).To(Equal(uint16(syscall.ETH_P_IP)))
-				Expect(filters[0].Attrs().LinkIndex).To(Equal(vethLink.Attrs().Index))
-				Expect(filters[0].Attrs().Priority).To(Equal(uint16(16)))
-				Expect(filters[0].Attrs().Parent).To(Equal(qdiscs[0].Attrs().Handle))
-				Expect(filters[0].(*netlink.U32).ClassId).To(Equal(netlink.MakeHandle(1, 1)))
+				gomega.Expect(filters[0]).To(gomega.BeAssignableToTypeOf(&netlink.U32{}))
+				gomega.Expect(filters[0].(*netlink.U32).Actions).To(gomega.BeEmpty())
+				gomega.Expect(filters[0].Attrs().Protocol).To(gomega.Equal(uint16(syscall.ETH_P_IP)))
+				gomega.Expect(filters[0].Attrs().LinkIndex).To(gomega.Equal(vethLink.Attrs().Index))
+				gomega.Expect(filters[0].Attrs().Priority).To(gomega.Equal(uint16(16)))
+				gomega.Expect(filters[0].Attrs().Parent).To(gomega.Equal(qdiscs[0].Attrs().Handle))
+				gomega.Expect(filters[0].(*netlink.U32).ClassId).To(gomega.Equal(netlink.MakeHandle(1, 1)))
 
 				filterSel := filters[0].(*netlink.U32).Sel
-				Expect(filterSel).To(BeAssignableToTypeOf(&netlink.TcU32Sel{}))
-				Expect(filterSel.Flags).To(Equal(uint8(netlink.TC_U32_TERMINAL)))
-				Expect(filterSel.Keys).To(HaveLen(1))
-				Expect(filterSel.Nkeys).To(Equal(uint8(1)))
+				gomega.Expect(filterSel).To(gomega.BeAssignableToTypeOf(&netlink.TcU32Sel{}))
+				gomega.Expect(filterSel.Flags).To(gomega.Equal(uint8(netlink.TC_U32_TERMINAL)))
+				gomega.Expect(filterSel.Keys).To(gomega.HaveLen(1))
+				gomega.Expect(filterSel.Nkeys).To(gomega.Equal(uint8(1)))
 
 				// The filter should match to 192.168.0.0/24 dst address in other words it should be:
 				// match c0a80000/ffffff00 at 16
 				selKey := filterSel.Keys[0]
-				Expect(selKey.Val).To(Equal(uint32(192*math.Pow(256, 3) + 168*math.Pow(256, 2))))
-				Expect(selKey.Off).To(Equal(int32(16)))
-				Expect(selKey.Mask).To(Equal(uint32(255*math.Pow(256, 3) + 255*math.Pow(256, 2) + 255*256)))
+				gomega.Expect(selKey.Val).To(gomega.Equal(uint32(192*math.Pow(256, 3) + 168*math.Pow(256, 2))))
+				gomega.Expect(selKey.Off).To(gomega.Equal(int32(16)))
+				gomega.Expect(selKey.Mask).To(gomega.Equal(uint32(255*math.Pow(256, 3) + 255*math.Pow(256, 2) + 255*256)))
 				return nil
-			})).To(Succeed())
+			})).To(gomega.Succeed())
 		})
 
-		Describe("cmdDEL", func() {
-			It(fmt.Sprintf("[%s] works with a Veth pair using 0.3.0 config", ver), func() {
+		ginkgo.Describe("cmdDEL", func() {
+			ginkgo.It(fmt.Sprintf("[%s] works with a Veth pair using 0.3.0 config", ver), func() {
 				conf := fmt.Sprintf(`{
 					"cniVersion": "%s",
 					"name": "cni-plugin-bandwidth-test",
@@ -1237,34 +1237,34 @@ var _ = Describe("bandwidth test", func() {
 					StdinData:   []byte(conf),
 				}
 
-				Expect(hostNs.Do(func(netNS ns.NetNS) error {
-					defer GinkgoRecover()
+				gomega.Expect(hostNs.Do(func(netNS ns.NetNS) error {
+					defer ginkgo.GinkgoRecover()
 					_, out, err := testutils.CmdAdd(containerNs.Path(), args.ContainerID, "", []byte(conf), func() error { return cmdAdd(args) })
-					Expect(err).NotTo(HaveOccurred(), string(out))
+					gomega.Expect(err).NotTo(gomega.HaveOccurred(), string(out))
 
 					_, err = netlink.LinkByName(hostIfname)
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 					_, err = netlink.LinkByName(ifbDeviceName)
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 					err = testutils.CmdDel(containerNs.Path(), args.ContainerID, "", func() error { return cmdDel(args) })
-					Expect(err).NotTo(HaveOccurred(), string(out))
+					gomega.Expect(err).NotTo(gomega.HaveOccurred(), string(out))
 
 					_, err = netlink.LinkByName(ifbDeviceName)
-					Expect(err).To(HaveOccurred())
+					gomega.Expect(err).To(gomega.HaveOccurred())
 
 					// The host veth peer should remain as it has not be created by this plugin
 					_, err = netlink.LinkByName(hostIfname)
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 					return nil
-				})).To(Succeed())
+				})).To(gomega.Succeed())
 			})
 		})
 
-		Describe("cmdCHECK", func() {
-			It(fmt.Sprintf("[%s] works with a Veth pair", ver), func() {
+		ginkgo.Describe("cmdCHECK", func() {
+			ginkgo.It(fmt.Sprintf("[%s] works with a Veth pair", ver), func() {
 				conf := fmt.Sprintf(`{
 					"cniVersion": "%s",
 					"name": "cni-plugin-bandwidth-test",
@@ -1303,41 +1303,41 @@ var _ = Describe("bandwidth test", func() {
 					StdinData:   []byte(conf),
 				}
 
-				Expect(hostNs.Do(func(netNS ns.NetNS) error {
-					defer GinkgoRecover()
+				gomega.Expect(hostNs.Do(func(netNS ns.NetNS) error {
+					defer ginkgo.GinkgoRecover()
 					_, out, err := testutils.CmdAdd(containerNs.Path(), args.ContainerID, "", []byte(conf), func() error { return cmdAdd(args) })
-					Expect(err).NotTo(HaveOccurred(), string(out))
+					gomega.Expect(err).NotTo(gomega.HaveOccurred(), string(out))
 
 					_, err = netlink.LinkByName(hostIfname)
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 					_, err = netlink.LinkByName(ifbDeviceName)
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 					if testutils.SpecVersionHasCHECK(ver) {
 						// Do CNI Check
 
 						err = testutils.CmdCheck(containerNs.Path(), args.ContainerID, "", func() error { return cmdCheck(args) })
-						Expect(err).NotTo(HaveOccurred())
+						gomega.Expect(err).NotTo(gomega.HaveOccurred())
 					}
 
 					err = testutils.CmdDel(containerNs.Path(), args.ContainerID, "", func() error { return cmdDel(args) })
-					Expect(err).NotTo(HaveOccurred(), string(out))
+					gomega.Expect(err).NotTo(gomega.HaveOccurred(), string(out))
 
 					_, err = netlink.LinkByName(ifbDeviceName)
-					Expect(err).To(HaveOccurred())
+					gomega.Expect(err).To(gomega.HaveOccurred())
 
 					// The host veth peer should remain as it has not be created by this plugin
 					_, err = netlink.LinkByName(hostIfname)
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 					return nil
-				})).To(Succeed())
+				})).To(gomega.Succeed())
 			})
 		})
 
-		Describe("Getting the host interface which plugin should work on from veth peer of container interface", func() {
-			It(fmt.Sprintf("[%s] should work with multiple host veth interfaces", ver), func() {
+		ginkgo.Describe("Getting the host interface which plugin should work on from veth peer of container interface", func() {
+			ginkgo.It(fmt.Sprintf("[%s] should work with multiple host veth interfaces", ver), func() {
 				// create veth peer in host ns
 				vethName, peerName := "host-veth-peer1", "host-veth-peer2"
 				createVethInOneNs(hostNs, vethName, peerName)
@@ -1388,112 +1388,112 @@ var _ = Describe("bandwidth test", func() {
 					StdinData:   []byte(conf),
 				}
 
-				Expect(hostNs.Do(func(netNS ns.NetNS) error {
-					defer GinkgoRecover()
+				gomega.Expect(hostNs.Do(func(netNS ns.NetNS) error {
+					defer ginkgo.GinkgoRecover()
 					r, out, err := testutils.CmdAdd(containerNs.Path(), args.ContainerID, "", []byte(conf), func() error { return cmdAdd(args) })
-					Expect(err).NotTo(HaveOccurred(), string(out))
+					gomega.Expect(err).NotTo(gomega.HaveOccurred(), string(out))
 					result, err := types100.GetResult(r)
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-					Expect(result.Interfaces).To(HaveLen(5))
-					Expect(result.Interfaces[4].Name).To(Equal(ifbDeviceName))
-					Expect(result.Interfaces[4].Sandbox).To(Equal(""))
+					gomega.Expect(result.Interfaces).To(gomega.HaveLen(5))
+					gomega.Expect(result.Interfaces[4].Name).To(gomega.Equal(ifbDeviceName))
+					gomega.Expect(result.Interfaces[4].Sandbox).To(gomega.Equal(""))
 
 					ifbLink, err := netlink.LinkByName(ifbDeviceName)
-					Expect(err).NotTo(HaveOccurred())
-					Expect(ifbLink.Attrs().MTU).To(Equal(hostIfaceMTU))
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
+					gomega.Expect(ifbLink.Attrs().MTU).To(gomega.Equal(hostIfaceMTU))
 
 					qdiscs, err := netlink.QdiscList(ifbLink)
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-					Expect(qdiscs).To(HaveLen(1))
-					Expect(qdiscs[0].Attrs().LinkIndex).To(Equal(ifbLink.Attrs().Index))
-					Expect(qdiscs[0]).To(BeAssignableToTypeOf(&netlink.Htb{}))
-					Expect(qdiscs[0].(*netlink.Htb).Defcls).To(Equal(uint32(ShapedClassMinorID)))
+					gomega.Expect(qdiscs).To(gomega.HaveLen(1))
+					gomega.Expect(qdiscs[0].Attrs().LinkIndex).To(gomega.Equal(ifbLink.Attrs().Index))
+					gomega.Expect(qdiscs[0]).To(gomega.BeAssignableToTypeOf(&netlink.Htb{}))
+					gomega.Expect(qdiscs[0].(*netlink.Htb).Defcls).To(gomega.Equal(uint32(ShapedClassMinorID)))
 
 					classes, err := netlink.ClassList(ifbLink, qdiscs[0].Attrs().Handle)
 
-					Expect(err).NotTo(HaveOccurred())
-					Expect(classes).To(HaveLen(2))
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
+					gomega.Expect(classes).To(gomega.HaveLen(2))
 
 					// Uncapped class
-					Expect(classes[0]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
-					Expect(classes[0].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, 1)))
-					Expect(classes[0].(*netlink.HtbClass).Rate).To(Equal(UncappedRate))
-					Expect(classes[0].(*netlink.HtbClass).Buffer).To(Equal(uint32(0)))
-					Expect(classes[0].(*netlink.HtbClass).Ceil).To(Equal(UncappedRate))
-					Expect(classes[0].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
+					gomega.Expect(classes[0]).To(gomega.BeAssignableToTypeOf(&netlink.HtbClass{}))
+					gomega.Expect(classes[0].(*netlink.HtbClass).Handle).To(gomega.Equal(netlink.MakeHandle(1, 1)))
+					gomega.Expect(classes[0].(*netlink.HtbClass).Rate).To(gomega.Equal(UncappedRate))
+					gomega.Expect(classes[0].(*netlink.HtbClass).Buffer).To(gomega.Equal(uint32(0)))
+					gomega.Expect(classes[0].(*netlink.HtbClass).Ceil).To(gomega.Equal(UncappedRate))
+					gomega.Expect(classes[0].(*netlink.HtbClass).Cbuffer).To(gomega.Equal(uint32(0)))
 
 					// Class with traffic shapping settings
-					Expect(classes[1]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
-					Expect(classes[1].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, uint16(qdiscs[0].(*netlink.Htb).Defcls))))
-					Expect(classes[1].(*netlink.HtbClass).Rate).To(Equal(uint64(2)))
-					// Expect(classes[1].(*netlink.HtbClass).Buffer).To(Equal(uint32(7812500)))
-					Expect(classes[1].(*netlink.HtbClass).Ceil).To(Equal(uint64(4)))
-					// Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
+					gomega.Expect(classes[1]).To(gomega.BeAssignableToTypeOf(&netlink.HtbClass{}))
+					gomega.Expect(classes[1].(*netlink.HtbClass).Handle).To(gomega.Equal(netlink.MakeHandle(1, uint16(qdiscs[0].(*netlink.Htb).Defcls))))
+					gomega.Expect(classes[1].(*netlink.HtbClass).Rate).To(gomega.Equal(uint64(2)))
+					// gomega.Expect(classes[1].(*netlink.HtbClass).Buffer).To(gomega.Equal(uint32(7812500)))
+					gomega.Expect(classes[1].(*netlink.HtbClass).Ceil).To(gomega.Equal(uint64(4)))
+					// gomega.Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(gomega.Equal(uint32(0)))
 
 					// Since we do not exclude anything from egress traffic shapping, we should not find any filter
 					filters, err := netlink.FilterList(ifbLink, qdiscs[0].Attrs().Handle)
-					Expect(err).NotTo(HaveOccurred())
-					Expect(filters).To(BeEmpty())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
+					gomega.Expect(filters).To(gomega.BeEmpty())
 
 					hostVethLink, err := netlink.LinkByName(hostIfname)
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 					qdiscFilters, err := netlink.FilterList(hostVethLink, netlink.MakeHandle(0xffff, 0))
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-					Expect(qdiscFilters).To(HaveLen(1))
-					Expect(qdiscFilters[0].(*netlink.U32).Actions[0].(*netlink.MirredAction).Ifindex).To(Equal(ifbLink.Attrs().Index))
+					gomega.Expect(qdiscFilters).To(gomega.HaveLen(1))
+					gomega.Expect(qdiscFilters[0].(*netlink.U32).Actions[0].(*netlink.MirredAction).Ifindex).To(gomega.Equal(ifbLink.Attrs().Index))
 
 					return nil
-				})).To(Succeed())
+				})).To(gomega.Succeed())
 
-				Expect(hostNs.Do(func(n ns.NetNS) error {
-					defer GinkgoRecover()
+				gomega.Expect(hostNs.Do(func(n ns.NetNS) error {
+					defer ginkgo.GinkgoRecover()
 
 					vethLink, err := netlink.LinkByName(hostIfname)
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 					qdiscs, err := netlink.QdiscList(vethLink)
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-					Expect(qdiscs).To(HaveLen(2))
-					Expect(qdiscs[0].Attrs().LinkIndex).To(Equal(vethLink.Attrs().Index))
-					Expect(qdiscs[0]).To(BeAssignableToTypeOf(&netlink.Htb{}))
-					Expect(qdiscs[0].(*netlink.Htb).Defcls).To(Equal(uint32(ShapedClassMinorID)))
+					gomega.Expect(qdiscs).To(gomega.HaveLen(2))
+					gomega.Expect(qdiscs[0].Attrs().LinkIndex).To(gomega.Equal(vethLink.Attrs().Index))
+					gomega.Expect(qdiscs[0]).To(gomega.BeAssignableToTypeOf(&netlink.Htb{}))
+					gomega.Expect(qdiscs[0].(*netlink.Htb).Defcls).To(gomega.Equal(uint32(ShapedClassMinorID)))
 
 					classes, err := netlink.ClassList(vethLink, qdiscs[0].Attrs().Handle)
 
-					Expect(err).NotTo(HaveOccurred())
-					Expect(classes).To(HaveLen(2))
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
+					gomega.Expect(classes).To(gomega.HaveLen(2))
 
 					// Uncapped class
-					Expect(classes[0]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
-					Expect(classes[0].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, 1)))
-					Expect(classes[0].(*netlink.HtbClass).Rate).To(Equal(UncappedRate))
-					Expect(classes[0].(*netlink.HtbClass).Buffer).To(Equal(uint32(0)))
-					Expect(classes[0].(*netlink.HtbClass).Ceil).To(Equal(UncappedRate))
-					Expect(classes[0].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
+					gomega.Expect(classes[0]).To(gomega.BeAssignableToTypeOf(&netlink.HtbClass{}))
+					gomega.Expect(classes[0].(*netlink.HtbClass).Handle).To(gomega.Equal(netlink.MakeHandle(1, 1)))
+					gomega.Expect(classes[0].(*netlink.HtbClass).Rate).To(gomega.Equal(UncappedRate))
+					gomega.Expect(classes[0].(*netlink.HtbClass).Buffer).To(gomega.Equal(uint32(0)))
+					gomega.Expect(classes[0].(*netlink.HtbClass).Ceil).To(gomega.Equal(UncappedRate))
+					gomega.Expect(classes[0].(*netlink.HtbClass).Cbuffer).To(gomega.Equal(uint32(0)))
 
 					// Class with traffic shapping settings
-					Expect(classes[1]).To(BeAssignableToTypeOf(&netlink.HtbClass{}))
-					Expect(classes[1].(*netlink.HtbClass).Handle).To(Equal(netlink.MakeHandle(1, uint16(qdiscs[0].(*netlink.Htb).Defcls))))
-					Expect(classes[1].(*netlink.HtbClass).Rate).To(Equal(uint64(1)))
-					// Expect(classes[1].(*netlink.HtbClass).Buffer).To(Equal(uint32(15625000)))
-					Expect(classes[1].(*netlink.HtbClass).Ceil).To(Equal(uint64(2)))
-					// Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(Equal(uint32(0)))
+					gomega.Expect(classes[1]).To(gomega.BeAssignableToTypeOf(&netlink.HtbClass{}))
+					gomega.Expect(classes[1].(*netlink.HtbClass).Handle).To(gomega.Equal(netlink.MakeHandle(1, uint16(qdiscs[0].(*netlink.Htb).Defcls))))
+					gomega.Expect(classes[1].(*netlink.HtbClass).Rate).To(gomega.Equal(uint64(1)))
+					// gomega.Expect(classes[1].(*netlink.HtbClass).Buffer).To(gomega.Equal(uint32(15625000)))
+					gomega.Expect(classes[1].(*netlink.HtbClass).Ceil).To(gomega.Equal(uint64(2)))
+					// gomega.Expect(classes[1].(*netlink.HtbClass).Cbuffer).To(gomega.Equal(uint32(0)))
 
 					// Since we do not exclude anything from ingress traffic shapping, we should not find any filter
 					filters, err := netlink.FilterList(vethLink, qdiscs[0].Attrs().Handle)
-					Expect(err).NotTo(HaveOccurred())
-					Expect(filters).To(BeEmpty())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
+					gomega.Expect(filters).To(gomega.BeEmpty())
 
 					return nil
-				})).To(Succeed())
+				})).To(gomega.Succeed())
 			})
 
-			It(fmt.Sprintf("[%s] should fail when container interface has no veth peer", ver), func() {
+			ginkgo.It(fmt.Sprintf("[%s] should fail when container interface has no veth peer", ver), func() {
 				// create a macvlan device to be container interface
 				macvlanContainerIfname := "container-macv"
 				createMacvlan(containerNs, containerIfname, macvlanContainerIfname)
@@ -1536,17 +1536,17 @@ var _ = Describe("bandwidth test", func() {
 					StdinData:   []byte(conf),
 				}
 
-				Expect(hostNs.Do(func(netNS ns.NetNS) error {
-					defer GinkgoRecover()
+				gomega.Expect(hostNs.Do(func(netNS ns.NetNS) error {
+					defer ginkgo.GinkgoRecover()
 
 					_, _, err := testutils.CmdAdd(containerNs.Path(), args.ContainerID, "", []byte(conf), func() error { return cmdAdd(args) })
-					Expect(err).To(HaveOccurred())
+					gomega.Expect(err).To(gomega.HaveOccurred())
 
 					return nil
-				})).To(Succeed())
+				})).To(gomega.Succeed())
 			})
 
-			It(fmt.Sprintf("[%s] should fail when preResult has no interfaces", ver), func() {
+			ginkgo.It(fmt.Sprintf("[%s] should fail when preResult has no interfaces", ver), func() {
 				conf := fmt.Sprintf(`{
 					"cniVersion": "%s",
 					"name": "cni-plugin-bandwidth-test",
@@ -1569,17 +1569,17 @@ var _ = Describe("bandwidth test", func() {
 					StdinData:   []byte(conf),
 				}
 
-				Expect(hostNs.Do(func(netNS ns.NetNS) error {
-					defer GinkgoRecover()
+				gomega.Expect(hostNs.Do(func(netNS ns.NetNS) error {
+					defer ginkgo.GinkgoRecover()
 
 					_, _, err := testutils.CmdAdd(containerNs.Path(), args.ContainerID, "", []byte(conf), func() error { return cmdAdd(args) })
-					Expect(err).To(HaveOccurred())
+					gomega.Expect(err).To(gomega.HaveOccurred())
 
 					return nil
-				})).To(Succeed())
+				})).To(gomega.Succeed())
 			})
 
-			It(fmt.Sprintf("[%s] should fail when veth peer of container interface does not match any of host interfaces in preResult", ver), func() {
+			ginkgo.It(fmt.Sprintf("[%s] should fail when veth peer of container interface does not match any of host interfaces in preResult", ver), func() {
 				// fake a non-exist host interface name
 				fakeHostIfname := fmt.Sprintf("%s-fake", hostIfname)
 
@@ -1621,14 +1621,14 @@ var _ = Describe("bandwidth test", func() {
 					StdinData:   []byte(conf),
 				}
 
-				Expect(hostNs.Do(func(netNS ns.NetNS) error {
-					defer GinkgoRecover()
+				gomega.Expect(hostNs.Do(func(netNS ns.NetNS) error {
+					defer ginkgo.GinkgoRecover()
 
 					_, _, err := testutils.CmdAdd(containerNs.Path(), args.ContainerID, "", []byte(conf), func() error { return cmdAdd(args) })
-					Expect(err).To(HaveOccurred())
+					gomega.Expect(err).To(gomega.HaveOccurred())
 
 					return nil
-				})).To(Succeed())
+				})).To(gomega.Succeed())
 			})
 		})
 	}

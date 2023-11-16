@@ -23,8 +23,8 @@ import (
 	"os"
 	"time"
 
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
+	"github.com/onsi/ginkgo/v2"
+	"github.com/onsi/gomega"
 	"github.com/onsi/gomega/gexec"
 
 	"github.com/containernetworking/cni/pkg/invoke"
@@ -35,7 +35,7 @@ import (
 	"github.com/containernetworking/plugins/pkg/testutils"
 )
 
-var _ = Describe("bandwidth measure test", func() {
+var _ = ginkgo.Describe("bandwidth measure test", func() {
 	var (
 		hostNs          ns.NetNS
 		containerNs     ns.NetNS
@@ -46,17 +46,17 @@ var _ = Describe("bandwidth measure test", func() {
 		hostIfaceMTU    int
 	)
 
-	BeforeEach(func() {
+	ginkgo.BeforeEach(func() {
 		var err error
 
 		hostIfname = "host-veth"
 		containerIfname = "container-veth"
 
 		hostNs, err = testutils.NewNS()
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		containerNs, err = testutils.NewNS()
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		hostIP = net.IP{169, 254, 0, 1}
 		containerIP = net.IP{10, 254, 0, 1}
@@ -65,18 +65,18 @@ var _ = Describe("bandwidth measure test", func() {
 		createVeth(hostNs, hostIfname, containerNs, containerIfname, hostIP, containerIP, hostIfaceMTU)
 	})
 
-	AfterEach(func() {
-		Expect(containerNs.Close()).To(Succeed())
-		Expect(testutils.UnmountNS(containerNs)).To(Succeed())
-		Expect(hostNs.Close()).To(Succeed())
-		Expect(testutils.UnmountNS(hostNs)).To(Succeed())
+	ginkgo.AfterEach(func() {
+		gomega.Expect(containerNs.Close()).To(gomega.Succeed())
+		gomega.Expect(testutils.UnmountNS(containerNs)).To(gomega.Succeed())
+		gomega.Expect(hostNs.Close()).To(gomega.Succeed())
+		gomega.Expect(testutils.UnmountNS(hostNs)).To(gomega.Succeed())
 	})
 
 	// Bandwidth requires host-side interface info, and thus only
 	// supports 0.3.0 and later CNI versions
 	for _, ver := range []string{"0.3.0", "0.3.1", "0.4.0", "1.0.0"} {
-		Describe(fmt.Sprintf("[%s] QoS effective", ver), func() {
-			Context(fmt.Sprintf("[%s] when chaining bandwidth plugin with PTP", ver), func() {
+		ginkgo.Describe(fmt.Sprintf("[%s] QoS effective", ver), func() {
+			ginkgo.Context(fmt.Sprintf("[%s] when chaining bandwidth plugin with PTP", ver), func() {
 				var ptpConf string
 				var rateInBits uint64
 				var burstInBits uint64
@@ -92,7 +92,7 @@ var _ = Describe("bandwidth measure test", func() {
 				var echoServerWithoutQoS *gexec.Session
 				var dataDir string
 
-				BeforeEach(func() {
+				ginkgo.BeforeEach(func() {
 					rateInBytes := 1000
 					rateInBits = uint64(rateInBytes * 8)
 					burstInBits = rateInBits * 2
@@ -103,7 +103,7 @@ var _ = Describe("bandwidth measure test", func() {
 
 					var err error
 					dataDir, err = os.MkdirTemp("", "bandwidth_linux_test")
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 					ptpConf = fmt.Sprintf(`{
 						"cniVersion": "%s",
@@ -124,39 +124,39 @@ var _ = Describe("bandwidth measure test", func() {
 					)
 
 					containerWithQoSNS, err = testutils.NewNS()
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 					containerWithoutQoSNS, err = testutils.NewNS()
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-					By("create two containers, and use the bandwidth plugin on one of them")
-					Expect(hostNs.Do(func(ns.NetNS) error {
-						defer GinkgoRecover()
+					ginkgo.By("create two containers, and use the bandwidth plugin on one of them")
+					gomega.Expect(hostNs.Do(func(ns.NetNS) error {
+						defer ginkgo.GinkgoRecover()
 
 						containerWithQoSRes, _, err = testutils.CmdAdd(containerWithQoSNS.Path(), "dummy", containerWithQoSIFName, []byte(ptpConf), func() error {
 							r, err := invoke.DelegateAdd(context.TODO(), "ptp", []byte(ptpConf), nil)
-							Expect(err).NotTo(HaveOccurred())
-							Expect(r.Print()).To(Succeed())
+							gomega.Expect(err).NotTo(gomega.HaveOccurred())
+							gomega.Expect(r.Print()).To(gomega.Succeed())
 
 							return err
 						})
-						Expect(err).NotTo(HaveOccurred())
+						gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 						containerWithoutQoSRes, _, err = testutils.CmdAdd(containerWithoutQoSNS.Path(), "dummy2", containerWithoutQoSIFName, []byte(ptpConf), func() error {
 							r, err := invoke.DelegateAdd(context.TODO(), "ptp", []byte(ptpConf), nil)
-							Expect(err).NotTo(HaveOccurred())
-							Expect(r.Print()).To(Succeed())
+							gomega.Expect(err).NotTo(gomega.HaveOccurred())
+							gomega.Expect(r.Print()).To(gomega.Succeed())
 
 							return err
 						})
-						Expect(err).NotTo(HaveOccurred())
+						gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 						containerWithQoSResult, err := types100.GetResult(containerWithQoSRes)
-						Expect(err).NotTo(HaveOccurred())
+						gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 						bandwidthPluginConf := &PluginConf{}
 						err = json.Unmarshal([]byte(ptpConf), &bandwidthPluginConf)
-						Expect(err).NotTo(HaveOccurred())
+						gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 						bandwidthPluginConf.RuntimeConfig.Bandwidth = &BandwidthEntry{
 							IngressBurst: burstInBits,
@@ -166,7 +166,7 @@ var _ = Describe("bandwidth measure test", func() {
 						}
 						bandwidthPluginConf.Type = "bandwidth"
 						newConfBytes, err := buildOneConfig(ver, bandwidthPluginConf, containerWithQoSResult)
-						Expect(err).NotTo(HaveOccurred())
+						gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 						args := &skel.CmdArgs{
 							ContainerID: "dummy3",
@@ -176,13 +176,13 @@ var _ = Describe("bandwidth measure test", func() {
 						}
 
 						result, out, err := testutils.CmdAdd(containerWithQoSNS.Path(), args.ContainerID, "", newConfBytes, func() error { return cmdAdd(args) })
-						Expect(err).NotTo(HaveOccurred(), string(out))
+						gomega.Expect(err).NotTo(gomega.HaveOccurred(), string(out))
 
 						if testutils.SpecVersionHasCHECK(ver) {
 							// Do CNI Check
 							checkConf := &PluginConf{}
 							err = json.Unmarshal([]byte(ptpConf), &checkConf)
-							Expect(err).NotTo(HaveOccurred())
+							gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 							checkConf.RuntimeConfig.Bandwidth = &BandwidthEntry{
 								IngressBurst: burstInBits,
@@ -193,7 +193,7 @@ var _ = Describe("bandwidth measure test", func() {
 							checkConf.Type = "bandwidth"
 
 							newCheckBytes, err := buildOneConfig(ver, checkConf, result)
-							Expect(err).NotTo(HaveOccurred())
+							gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 							args = &skel.CmdArgs{
 								ContainerID: "dummy3",
@@ -203,24 +203,24 @@ var _ = Describe("bandwidth measure test", func() {
 							}
 
 							err = testutils.CmdCheck(containerWithQoSNS.Path(), args.ContainerID, "", func() error { return cmdCheck(args) })
-							Expect(err).NotTo(HaveOccurred())
+							gomega.Expect(err).NotTo(gomega.HaveOccurred())
 						}
 
 						return nil
-					})).To(Succeed())
+					})).To(gomega.Succeed())
 
-					By("starting a tcp server on both containers")
+					ginkgo.By("starting a tcp server on both containers")
 					portServerWithQoS, echoServerWithQoS = startEchoServerInNamespace(containerWithQoSNS)
 					portServerWithoutQoS, echoServerWithoutQoS = startEchoServerInNamespace(containerWithoutQoSNS)
 				})
 
-				AfterEach(func() {
-					Expect(os.RemoveAll(dataDir)).To(Succeed())
+				ginkgo.AfterEach(func() {
+					gomega.Expect(os.RemoveAll(dataDir)).To(gomega.Succeed())
 
-					Expect(containerWithQoSNS.Close()).To(Succeed())
-					Expect(testutils.UnmountNS(containerWithQoSNS)).To(Succeed())
-					Expect(containerWithoutQoSNS.Close()).To(Succeed())
-					Expect(testutils.UnmountNS(containerWithoutQoSNS)).To(Succeed())
+					gomega.Expect(containerWithQoSNS.Close()).To(gomega.Succeed())
+					gomega.Expect(testutils.UnmountNS(containerWithQoSNS)).To(gomega.Succeed())
+					gomega.Expect(containerWithoutQoSNS.Close()).To(gomega.Succeed())
+					gomega.Expect(testutils.UnmountNS(containerWithoutQoSNS)).To(gomega.Succeed())
 
 					if echoServerWithoutQoS != nil {
 						echoServerWithoutQoS.Kill()
@@ -230,38 +230,38 @@ var _ = Describe("bandwidth measure test", func() {
 					}
 				})
 
-				It("limits ingress traffic on veth device", func() {
+				ginkgo.It("limits ingress traffic on veth device", func() {
 					var runtimeWithLimit time.Duration
 					var runtimeWithoutLimit time.Duration
 
-					By("gather timing statistics about both containers")
+					ginkgo.By("gather timing statistics about both containers")
 
-					By("sending tcp traffic to the container that has traffic shaped", func() {
+					ginkgo.By("sending tcp traffic to the container that has traffic shaped", func() {
 						start := time.Now()
 						result, err := types100.GetResult(containerWithQoSRes)
-						Expect(err).NotTo(HaveOccurred())
+						gomega.Expect(err).NotTo(gomega.HaveOccurred())
 						makeTCPClientInNS(hostNs.Path(), result.IPs[0].Address.IP.String(), portServerWithQoS, packetInBytes)
 						end := time.Now()
 						runtimeWithLimit = end.Sub(start)
 						log.Printf("Elapsed with qos %.2f", runtimeWithLimit.Seconds())
 					})
 
-					By("sending tcp traffic to the container that does not have traffic shaped", func() {
+					ginkgo.By("sending tcp traffic to the container that does not have traffic shaped", func() {
 						start := time.Now()
 						result, err := types100.GetResult(containerWithoutQoSRes)
-						Expect(err).NotTo(HaveOccurred())
+						gomega.Expect(err).NotTo(gomega.HaveOccurred())
 						makeTCPClientInNS(hostNs.Path(), result.IPs[0].Address.IP.String(), portServerWithoutQoS, packetInBytes)
 						end := time.Now()
 						runtimeWithoutLimit = end.Sub(start)
 						log.Printf("Elapsed without qos %.2f", runtimeWithoutLimit.Seconds())
 					})
 
-					Expect(runtimeWithLimit).To(BeNumerically(">", runtimeWithoutLimit+1000*time.Millisecond))
+					gomega.Expect(runtimeWithLimit).To(gomega.BeNumerically(">", runtimeWithoutLimit+1000*time.Millisecond))
 				})
 			})
 		})
 
-		Context(fmt.Sprintf("[%s] when chaining bandwidth plugin with PTP and excluding specific subnets from traffic", ver), func() {
+		ginkgo.Context(fmt.Sprintf("[%s] when chaining bandwidth plugin with PTP and excluding specific subnets from traffic", ver), func() {
 			var ptpConf string
 			var rateInBits uint64
 			var burstInBits uint64
@@ -277,7 +277,7 @@ var _ = Describe("bandwidth measure test", func() {
 			var echoServerWithoutQoS *gexec.Session
 			var dataDir string
 
-			BeforeEach(func() {
+			ginkgo.BeforeEach(func() {
 				rateInBytes := 1000
 				rateInBits = uint64(rateInBytes * 8)
 				burstInBits = rateInBits * 2
@@ -288,7 +288,7 @@ var _ = Describe("bandwidth measure test", func() {
 
 				var err error
 				dataDir, err = os.MkdirTemp("", "bandwidth_linux_test")
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 				ptpConf = fmt.Sprintf(`{
 					"cniVersion": "%s",
@@ -309,39 +309,39 @@ var _ = Describe("bandwidth measure test", func() {
 				)
 
 				containerWithQoSNS, err = testutils.NewNS()
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 				containerWithoutQoSNS, err = testutils.NewNS()
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-				By("create two containers, and use the bandwidth plugin on one of them")
-				Expect(hostNs.Do(func(ns.NetNS) error {
-					defer GinkgoRecover()
+				ginkgo.By("create two containers, and use the bandwidth plugin on one of them")
+				gomega.Expect(hostNs.Do(func(ns.NetNS) error {
+					defer ginkgo.GinkgoRecover()
 
 					containerWithQoSRes, _, err = testutils.CmdAdd(containerWithQoSNS.Path(), "dummy", containerWithQoSIFName, []byte(ptpConf), func() error {
 						r, err := invoke.DelegateAdd(context.TODO(), "ptp", []byte(ptpConf), nil)
-						Expect(err).NotTo(HaveOccurred())
-						Expect(r.Print()).To(Succeed())
+						gomega.Expect(err).NotTo(gomega.HaveOccurred())
+						gomega.Expect(r.Print()).To(gomega.Succeed())
 
 						return err
 					})
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 					containerWithoutQoSRes, _, err = testutils.CmdAdd(containerWithoutQoSNS.Path(), "dummy2", containerWithoutQoSIFName, []byte(ptpConf), func() error {
 						r, err := invoke.DelegateAdd(context.TODO(), "ptp", []byte(ptpConf), nil)
-						Expect(err).NotTo(HaveOccurred())
-						Expect(r.Print()).To(Succeed())
+						gomega.Expect(err).NotTo(gomega.HaveOccurred())
+						gomega.Expect(r.Print()).To(gomega.Succeed())
 
 						return err
 					})
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 					containerWithQoSResult, err := types100.GetResult(containerWithQoSRes)
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 					bandwidthPluginConf := &PluginConf{}
 					err = json.Unmarshal([]byte(ptpConf), &bandwidthPluginConf)
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 					bandwidthPluginConf.RuntimeConfig.Bandwidth = &BandwidthEntry{
 						IngressBurst:    burstInBits,
@@ -352,7 +352,7 @@ var _ = Describe("bandwidth measure test", func() {
 					}
 					bandwidthPluginConf.Type = "bandwidth"
 					newConfBytes, err := buildOneConfig(ver, bandwidthPluginConf, containerWithQoSResult)
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 					args := &skel.CmdArgs{
 						ContainerID: "dummy3",
@@ -362,13 +362,13 @@ var _ = Describe("bandwidth measure test", func() {
 					}
 
 					result, out, err := testutils.CmdAdd(containerWithQoSNS.Path(), args.ContainerID, "", newConfBytes, func() error { return cmdAdd(args) })
-					Expect(err).NotTo(HaveOccurred(), string(out))
+					gomega.Expect(err).NotTo(gomega.HaveOccurred(), string(out))
 
 					if testutils.SpecVersionHasCHECK(ver) {
 						// Do CNI Check
 						checkConf := &PluginConf{}
 						err = json.Unmarshal([]byte(ptpConf), &checkConf)
-						Expect(err).NotTo(HaveOccurred())
+						gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 						checkConf.RuntimeConfig.Bandwidth = &BandwidthEntry{
 							IngressBurst:    burstInBits,
@@ -380,7 +380,7 @@ var _ = Describe("bandwidth measure test", func() {
 						checkConf.Type = "bandwidth"
 
 						newCheckBytes, err := buildOneConfig(ver, checkConf, result)
-						Expect(err).NotTo(HaveOccurred())
+						gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 						args = &skel.CmdArgs{
 							ContainerID: "dummy3",
@@ -390,24 +390,24 @@ var _ = Describe("bandwidth measure test", func() {
 						}
 
 						err = testutils.CmdCheck(containerWithQoSNS.Path(), args.ContainerID, "", func() error { return cmdCheck(args) })
-						Expect(err).NotTo(HaveOccurred())
+						gomega.Expect(err).NotTo(gomega.HaveOccurred())
 					}
 
 					return nil
-				})).To(Succeed())
+				})).To(gomega.Succeed())
 
-				By("starting a tcp server on both containers")
+				ginkgo.By("starting a tcp server on both containers")
 				portServerWithQoS, echoServerWithQoS = startEchoServerInNamespace(containerWithQoSNS)
 				portServerWithoutQoS, echoServerWithoutQoS = startEchoServerInNamespace(containerWithoutQoSNS)
 			})
 
-			AfterEach(func() {
-				Expect(os.RemoveAll(dataDir)).To(Succeed())
+			ginkgo.AfterEach(func() {
+				gomega.Expect(os.RemoveAll(dataDir)).To(gomega.Succeed())
 
-				Expect(containerWithQoSNS.Close()).To(Succeed())
-				Expect(testutils.UnmountNS(containerWithQoSNS)).To(Succeed())
-				Expect(containerWithoutQoSNS.Close()).To(Succeed())
-				Expect(testutils.UnmountNS(containerWithoutQoSNS)).To(Succeed())
+				gomega.Expect(containerWithQoSNS.Close()).To(gomega.Succeed())
+				gomega.Expect(testutils.UnmountNS(containerWithQoSNS)).To(gomega.Succeed())
+				gomega.Expect(containerWithoutQoSNS.Close()).To(gomega.Succeed())
+				gomega.Expect(testutils.UnmountNS(containerWithoutQoSNS)).To(gomega.Succeed())
 
 				if echoServerWithoutQoS != nil {
 					echoServerWithoutQoS.Kill()
@@ -417,37 +417,37 @@ var _ = Describe("bandwidth measure test", func() {
 				}
 			})
 
-			It("does not limits ingress traffic on veth device coming from 10.1.2.0/24", func() {
+			ginkgo.It("does not limits ingress traffic on veth device coming from 10.1.2.0/24", func() {
 				var runtimeWithLimit time.Duration
 				var runtimeWithoutLimit time.Duration
 
-				By("gather timing statistics about both containers")
+				ginkgo.By("gather timing statistics about both containers")
 
-				By("sending tcp traffic to the container that has traffic shaped", func() {
+				ginkgo.By("sending tcp traffic to the container that has traffic shaped", func() {
 					start := time.Now()
 					result, err := types100.GetResult(containerWithQoSRes)
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 					makeTCPClientInNS(hostNs.Path(), result.IPs[0].Address.IP.String(), portServerWithQoS, packetInBytes)
 					end := time.Now()
 					runtimeWithLimit = end.Sub(start)
 					log.Printf("Elapsed with qos %.2f", runtimeWithLimit.Seconds())
 				})
 
-				By("sending tcp traffic to the container that does not have traffic shaped", func() {
+				ginkgo.By("sending tcp traffic to the container that does not have traffic shaped", func() {
 					start := time.Now()
 					result, err := types100.GetResult(containerWithoutQoSRes)
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 					makeTCPClientInNS(hostNs.Path(), result.IPs[0].Address.IP.String(), portServerWithoutQoS, packetInBytes)
 					end := time.Now()
 					runtimeWithoutLimit = end.Sub(start)
 					log.Printf("Elapsed without qos %.2f", runtimeWithoutLimit.Seconds())
 				})
 
-				Expect(runtimeWithLimit - runtimeWithoutLimit).To(BeNumerically("<", 100*time.Millisecond))
+				gomega.Expect(runtimeWithLimit - runtimeWithoutLimit).To(gomega.BeNumerically("<", 100*time.Millisecond))
 			})
 		})
 
-		Context(fmt.Sprintf("[%s] when chaining bandwidth plugin with PTP and only including specific subnets in traffic shapping (not including the main ns one)", ver), func() {
+		ginkgo.Context(fmt.Sprintf("[%s] when chaining bandwidth plugin with PTP and only including specific subnets in traffic shapping (not including the main ns one)", ver), func() {
 			var ptpConf string
 			var rateInBits uint64
 			var burstInBits uint64
@@ -463,7 +463,7 @@ var _ = Describe("bandwidth measure test", func() {
 			var echoServerWithoutQoS *gexec.Session
 			var dataDir string
 
-			BeforeEach(func() {
+			ginkgo.BeforeEach(func() {
 				rateInBytes := 1000
 				rateInBits = uint64(rateInBytes * 8)
 				burstInBits = rateInBits * 2
@@ -474,7 +474,7 @@ var _ = Describe("bandwidth measure test", func() {
 
 				var err error
 				dataDir, err = os.MkdirTemp("", "bandwidth_linux_test")
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 				ptpConf = fmt.Sprintf(`{
 					"cniVersion": "%s",
@@ -495,40 +495,40 @@ var _ = Describe("bandwidth measure test", func() {
 				)
 
 				containerWithQoSNS, err = testutils.NewNS()
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 				containerWithoutQoSNS, err = testutils.NewNS()
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-				By("create two containers, and use the bandwidth plugin on one of them")
+				ginkgo.By("create two containers, and use the bandwidth plugin on one of them")
 
-				Expect(hostNs.Do(func(ns.NetNS) error {
-					defer GinkgoRecover()
+				gomega.Expect(hostNs.Do(func(ns.NetNS) error {
+					defer ginkgo.GinkgoRecover()
 
 					containerWithQoSRes, _, err = testutils.CmdAdd(containerWithQoSNS.Path(), "dummy", containerWithQoSIFName, []byte(ptpConf), func() error {
 						r, err := invoke.DelegateAdd(context.TODO(), "ptp", []byte(ptpConf), nil)
-						Expect(err).NotTo(HaveOccurred())
-						Expect(r.Print()).To(Succeed())
+						gomega.Expect(err).NotTo(gomega.HaveOccurred())
+						gomega.Expect(r.Print()).To(gomega.Succeed())
 
 						return err
 					})
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 					containerWithoutQoSRes, _, err = testutils.CmdAdd(containerWithoutQoSNS.Path(), "dummy2", containerWithoutQoSIFName, []byte(ptpConf), func() error {
 						r, err := invoke.DelegateAdd(context.TODO(), "ptp", []byte(ptpConf), nil)
-						Expect(err).NotTo(HaveOccurred())
-						Expect(r.Print()).To(Succeed())
+						gomega.Expect(err).NotTo(gomega.HaveOccurred())
+						gomega.Expect(r.Print()).To(gomega.Succeed())
 
 						return err
 					})
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 					containerWithQoSResult, err := types100.GetResult(containerWithQoSRes)
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 					bandwidthPluginConf := &PluginConf{}
 					err = json.Unmarshal([]byte(ptpConf), &bandwidthPluginConf)
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 					bandwidthPluginConf.RuntimeConfig.Bandwidth = &BandwidthEntry{
 						IngressBurst:  burstInBits,
@@ -539,7 +539,7 @@ var _ = Describe("bandwidth measure test", func() {
 					}
 					bandwidthPluginConf.Type = "bandwidth"
 					newConfBytes, err := buildOneConfig(ver, bandwidthPluginConf, containerWithQoSResult)
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 					args := &skel.CmdArgs{
 						ContainerID: "dummy3",
@@ -549,13 +549,13 @@ var _ = Describe("bandwidth measure test", func() {
 					}
 
 					result, out, err := testutils.CmdAdd(containerWithQoSNS.Path(), args.ContainerID, "", newConfBytes, func() error { return cmdAdd(args) })
-					Expect(err).NotTo(HaveOccurred(), string(out))
+					gomega.Expect(err).NotTo(gomega.HaveOccurred(), string(out))
 
 					if testutils.SpecVersionHasCHECK(ver) {
 						// Do CNI Check
 						checkConf := &PluginConf{}
 						err = json.Unmarshal([]byte(ptpConf), &checkConf)
-						Expect(err).NotTo(HaveOccurred())
+						gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 						checkConf.RuntimeConfig.Bandwidth = &BandwidthEntry{
 							IngressBurst:  burstInBits,
@@ -567,7 +567,7 @@ var _ = Describe("bandwidth measure test", func() {
 						checkConf.Type = "bandwidth"
 
 						newCheckBytes, err := buildOneConfig(ver, checkConf, result)
-						Expect(err).NotTo(HaveOccurred())
+						gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 						args = &skel.CmdArgs{
 							ContainerID: "dummy3",
@@ -577,24 +577,24 @@ var _ = Describe("bandwidth measure test", func() {
 						}
 
 						err = testutils.CmdCheck(containerWithQoSNS.Path(), args.ContainerID, "", func() error { return cmdCheck(args) })
-						Expect(err).NotTo(HaveOccurred())
+						gomega.Expect(err).NotTo(gomega.HaveOccurred())
 					}
 
 					return nil
-				})).To(Succeed())
+				})).To(gomega.Succeed())
 
-				By("starting a tcp server on both containers")
+				ginkgo.By("starting a tcp server on both containers")
 				portServerWithQoS, echoServerWithQoS = startEchoServerInNamespace(containerWithQoSNS)
 				portServerWithoutQoS, echoServerWithoutQoS = startEchoServerInNamespace(containerWithoutQoSNS)
 			})
 
-			AfterEach(func() {
-				Expect(os.RemoveAll(dataDir)).To(Succeed())
+			ginkgo.AfterEach(func() {
+				gomega.Expect(os.RemoveAll(dataDir)).To(gomega.Succeed())
 
-				Expect(containerWithQoSNS.Close()).To(Succeed())
-				Expect(testutils.UnmountNS(containerWithQoSNS)).To(Succeed())
-				Expect(containerWithoutQoSNS.Close()).To(Succeed())
-				Expect(testutils.UnmountNS(containerWithoutQoSNS)).To(Succeed())
+				gomega.Expect(containerWithQoSNS.Close()).To(gomega.Succeed())
+				gomega.Expect(testutils.UnmountNS(containerWithQoSNS)).To(gomega.Succeed())
+				gomega.Expect(containerWithoutQoSNS.Close()).To(gomega.Succeed())
+				gomega.Expect(testutils.UnmountNS(containerWithoutQoSNS)).To(gomega.Succeed())
 
 				if echoServerWithoutQoS != nil {
 					echoServerWithoutQoS.Kill()
@@ -604,37 +604,37 @@ var _ = Describe("bandwidth measure test", func() {
 				}
 			})
 
-			It("does not limit ingress traffic on veth device coming from non included subnets", func() {
+			ginkgo.It("does not limit ingress traffic on veth device coming from non included subnets", func() {
 				var runtimeWithLimit time.Duration
 				var runtimeWithoutLimit time.Duration
 
-				By("gather timing statistics about both containers")
+				ginkgo.By("gather timing statistics about both containers")
 
-				By("sending tcp traffic to the container that has traffic shaped", func() {
+				ginkgo.By("sending tcp traffic to the container that has traffic shaped", func() {
 					start := time.Now()
 					result, err := types100.GetResult(containerWithQoSRes)
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 					makeTCPClientInNS(hostNs.Path(), result.IPs[0].Address.IP.String(), portServerWithQoS, packetInBytes)
 					end := time.Now()
 					runtimeWithLimit = end.Sub(start)
 					log.Printf("Elapsed with qos %.2f", runtimeWithLimit.Seconds())
 				})
 
-				By("sending tcp traffic to the container that does not have traffic shaped", func() {
+				ginkgo.By("sending tcp traffic to the container that does not have traffic shaped", func() {
 					start := time.Now()
 					result, err := types100.GetResult(containerWithoutQoSRes)
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 					makeTCPClientInNS(hostNs.Path(), result.IPs[0].Address.IP.String(), portServerWithoutQoS, packetInBytes)
 					end := time.Now()
 					runtimeWithoutLimit = end.Sub(start)
 					log.Printf("Elapsed without qos %.2f", runtimeWithoutLimit.Seconds())
 				})
 
-				Expect(runtimeWithLimit - runtimeWithoutLimit).To(BeNumerically("<", 100*time.Millisecond))
+				gomega.Expect(runtimeWithLimit - runtimeWithoutLimit).To(gomega.BeNumerically("<", 100*time.Millisecond))
 			})
 		})
 
-		Context(fmt.Sprintf("[%s] when chaining bandwidth plugin with PTP and only including specific subnets in traffic shapping (including the main ns one)", ver), func() {
+		ginkgo.Context(fmt.Sprintf("[%s] when chaining bandwidth plugin with PTP and only including specific subnets in traffic shapping (including the main ns one)", ver), func() {
 			var ptpConf string
 			var rateInBits uint64
 			var burstInBits uint64
@@ -650,7 +650,7 @@ var _ = Describe("bandwidth measure test", func() {
 			var echoServerWithoutQoS *gexec.Session
 			var dataDir string
 
-			BeforeEach(func() {
+			ginkgo.BeforeEach(func() {
 				rateInBytes := 1000
 				rateInBits = uint64(rateInBytes * 8)
 				burstInBits = rateInBits * 2
@@ -661,7 +661,7 @@ var _ = Describe("bandwidth measure test", func() {
 
 				var err error
 				dataDir, err = os.MkdirTemp("", "bandwidth_linux_test")
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 				ptpConf = fmt.Sprintf(`{
 					"cniVersion": "%s",
@@ -682,40 +682,40 @@ var _ = Describe("bandwidth measure test", func() {
 				)
 
 				containerWithQoSNS, err = testutils.NewNS()
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 				containerWithoutQoSNS, err = testutils.NewNS()
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-				By("create two containers, and use the bandwidth plugin on one of them")
+				ginkgo.By("create two containers, and use the bandwidth plugin on one of them")
 
-				Expect(hostNs.Do(func(ns.NetNS) error {
-					defer GinkgoRecover()
+				gomega.Expect(hostNs.Do(func(ns.NetNS) error {
+					defer ginkgo.GinkgoRecover()
 
 					containerWithQoSRes, _, err = testutils.CmdAdd(containerWithQoSNS.Path(), "dummy", containerWithQoSIFName, []byte(ptpConf), func() error {
 						r, err := invoke.DelegateAdd(context.TODO(), "ptp", []byte(ptpConf), nil)
-						Expect(err).NotTo(HaveOccurred())
-						Expect(r.Print()).To(Succeed())
+						gomega.Expect(err).NotTo(gomega.HaveOccurred())
+						gomega.Expect(r.Print()).To(gomega.Succeed())
 
 						return err
 					})
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 					containerWithoutQoSRes, _, err = testutils.CmdAdd(containerWithoutQoSNS.Path(), "dummy2", containerWithoutQoSIFName, []byte(ptpConf), func() error {
 						r, err := invoke.DelegateAdd(context.TODO(), "ptp", []byte(ptpConf), nil)
-						Expect(err).NotTo(HaveOccurred())
-						Expect(r.Print()).To(Succeed())
+						gomega.Expect(err).NotTo(gomega.HaveOccurred())
+						gomega.Expect(r.Print()).To(gomega.Succeed())
 
 						return err
 					})
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 					containerWithQoSResult, err := types100.GetResult(containerWithQoSRes)
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 					bandwidthPluginConf := &PluginConf{}
 					err = json.Unmarshal([]byte(ptpConf), &bandwidthPluginConf)
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 					bandwidthPluginConf.RuntimeConfig.Bandwidth = &BandwidthEntry{
 						IngressBurst:  burstInBits,
@@ -726,7 +726,7 @@ var _ = Describe("bandwidth measure test", func() {
 					}
 					bandwidthPluginConf.Type = "bandwidth"
 					newConfBytes, err := buildOneConfig(ver, bandwidthPluginConf, containerWithQoSResult)
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 					args := &skel.CmdArgs{
 						ContainerID: "dummy3",
@@ -736,13 +736,13 @@ var _ = Describe("bandwidth measure test", func() {
 					}
 
 					result, out, err := testutils.CmdAdd(containerWithQoSNS.Path(), args.ContainerID, "", newConfBytes, func() error { return cmdAdd(args) })
-					Expect(err).NotTo(HaveOccurred(), string(out))
+					gomega.Expect(err).NotTo(gomega.HaveOccurred(), string(out))
 
 					if testutils.SpecVersionHasCHECK(ver) {
 						// Do CNI Check
 						checkConf := &PluginConf{}
 						err = json.Unmarshal([]byte(ptpConf), &checkConf)
-						Expect(err).NotTo(HaveOccurred())
+						gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 						checkConf.RuntimeConfig.Bandwidth = &BandwidthEntry{
 							IngressBurst:  burstInBits,
@@ -754,7 +754,7 @@ var _ = Describe("bandwidth measure test", func() {
 						checkConf.Type = "bandwidth"
 
 						newCheckBytes, err := buildOneConfig(ver, checkConf, result)
-						Expect(err).NotTo(HaveOccurred())
+						gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 						args = &skel.CmdArgs{
 							ContainerID: "dummy3",
@@ -764,24 +764,24 @@ var _ = Describe("bandwidth measure test", func() {
 						}
 
 						err = testutils.CmdCheck(containerWithQoSNS.Path(), args.ContainerID, "", func() error { return cmdCheck(args) })
-						Expect(err).NotTo(HaveOccurred())
+						gomega.Expect(err).NotTo(gomega.HaveOccurred())
 					}
 
 					return nil
-				})).To(Succeed())
+				})).To(gomega.Succeed())
 
-				By("starting a tcp server on both containers")
+				ginkgo.By("starting a tcp server on both containers")
 				portServerWithQoS, echoServerWithQoS = startEchoServerInNamespace(containerWithQoSNS)
 				portServerWithoutQoS, echoServerWithoutQoS = startEchoServerInNamespace(containerWithoutQoSNS)
 			})
 
-			AfterEach(func() {
-				Expect(os.RemoveAll(dataDir)).To(Succeed())
+			ginkgo.AfterEach(func() {
+				gomega.Expect(os.RemoveAll(dataDir)).To(gomega.Succeed())
 
-				Expect(containerWithQoSNS.Close()).To(Succeed())
-				Expect(testutils.UnmountNS(containerWithQoSNS)).To(Succeed())
-				Expect(containerWithoutQoSNS.Close()).To(Succeed())
-				Expect(testutils.UnmountNS(containerWithoutQoSNS)).To(Succeed())
+				gomega.Expect(containerWithQoSNS.Close()).To(gomega.Succeed())
+				gomega.Expect(testutils.UnmountNS(containerWithQoSNS)).To(gomega.Succeed())
+				gomega.Expect(containerWithoutQoSNS.Close()).To(gomega.Succeed())
+				gomega.Expect(testutils.UnmountNS(containerWithoutQoSNS)).To(gomega.Succeed())
 
 				if echoServerWithoutQoS != nil {
 					echoServerWithoutQoS.Kill()
@@ -791,33 +791,33 @@ var _ = Describe("bandwidth measure test", func() {
 				}
 			})
 
-			It("limits ingress traffic on veth device coming from included subnets", func() {
+			ginkgo.It("limits ingress traffic on veth device coming from included subnets", func() {
 				var runtimeWithLimit time.Duration
 				var runtimeWithoutLimit time.Duration
 
-				By("gather timing statistics about both containers")
+				ginkgo.By("gather timing statistics about both containers")
 
-				By("sending tcp traffic to the container that has traffic shaped", func() {
+				ginkgo.By("sending tcp traffic to the container that has traffic shaped", func() {
 					start := time.Now()
 					result, err := types100.GetResult(containerWithQoSRes)
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 					makeTCPClientInNS(hostNs.Path(), result.IPs[0].Address.IP.String(), portServerWithQoS, packetInBytes)
 					end := time.Now()
 					runtimeWithLimit = end.Sub(start)
 					log.Printf("Elapsed with qos %.2f", runtimeWithLimit.Seconds())
 				})
 
-				By("sending tcp traffic to the container that does not have traffic shaped", func() {
+				ginkgo.By("sending tcp traffic to the container that does not have traffic shaped", func() {
 					start := time.Now()
 					result, err := types100.GetResult(containerWithoutQoSRes)
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 					makeTCPClientInNS(hostNs.Path(), result.IPs[0].Address.IP.String(), portServerWithoutQoS, packetInBytes)
 					end := time.Now()
 					runtimeWithoutLimit = end.Sub(start)
 					log.Printf("Elapsed without qos %.2f", runtimeWithoutLimit.Seconds())
 				})
 
-				Expect(runtimeWithLimit).To(BeNumerically(">", runtimeWithoutLimit+1000*time.Millisecond))
+				gomega.Expect(runtimeWithLimit).To(gomega.BeNumerically(">", runtimeWithoutLimit+1000*time.Millisecond))
 			})
 		})
 	}

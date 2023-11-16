@@ -25,8 +25,8 @@ import (
 	"strings"
 	"testing"
 
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
+	"github.com/onsi/ginkgo/v2"
+	"github.com/onsi/gomega"
 	"github.com/onsi/gomega/gbytes"
 	"github.com/onsi/gomega/gexec"
 	"github.com/vishvananda/netlink"
@@ -36,17 +36,17 @@ import (
 )
 
 func TestHTB(t *testing.T) {
-	RegisterFailHandler(Fail)
-	RunSpecs(t, "plugins/meta/bandwidth")
+	gomega.RegisterFailHandler(ginkgo.Fail)
+	ginkgo.RunSpecs(t, "plugins/meta/bandwidth")
 }
 
 var echoServerBinaryPath, echoClientBinaryPath string
 
-var _ = SynchronizedBeforeSuite(func() []byte {
+var _ = ginkgo.SynchronizedBeforeSuite(func() []byte {
 	serverBinaryPath, err := gexec.Build("github.com/containernetworking/plugins/pkg/testutils/echo/server")
-	Expect(err).NotTo(HaveOccurred())
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	clientBinaryPath, err := gexec.Build("github.com/containernetworking/plugins/pkg/testutils/echo/client")
-	Expect(err).NotTo(HaveOccurred())
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	return []byte(strings.Join([]string{serverBinaryPath, clientBinaryPath}, ","))
 }, func(data []byte) {
 	binaries := strings.Split(string(data), ",")
@@ -54,7 +54,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	echoClientBinaryPath = binaries[1]
 })
 
-var _ = SynchronizedAfterSuite(func() {}, func() {
+var _ = ginkgo.SynchronizedAfterSuite(func() {}, func() {
 	gexec.CleanupBuildArtifacts()
 })
 
@@ -64,25 +64,25 @@ func startInNetNS(binPath string, netNS ns.NetNS) (*gexec.Session, error) {
 	// where `ip netns exec` can find it
 	cmd := exec.Command("ip", "netns", "exec", baseName, binPath)
 
-	session, err := gexec.Start(cmd, GinkgoWriter, GinkgoWriter)
+	session, err := gexec.Start(cmd, ginkgo.GinkgoWriter, ginkgo.GinkgoWriter)
 	return session, err
 }
 
 func startEchoServerInNamespace(netNS ns.NetNS) (int, *gexec.Session) {
 	session, err := startInNetNS(echoServerBinaryPath, netNS)
-	Expect(err).NotTo(HaveOccurred())
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 	// wait for it to print it's address on stdout
-	Eventually(session.Out).Should(gbytes.Say("\n"))
+	gomega.Eventually(session.Out).Should(gbytes.Say("\n"))
 	_, portString, err := net.SplitHostPort(strings.TrimSpace(string(session.Out.Contents())))
-	Expect(err).NotTo(HaveOccurred())
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 	port, err := strconv.Atoi(portString)
-	Expect(err).NotTo(HaveOccurred())
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 	go func() {
 		// print out echoserver output to ginkgo to capture any errors that might be occurring.
-		io.Copy(GinkgoWriter, io.MultiReader(session.Out, session.Err))
+		io.Copy(ginkgo.GinkgoWriter, io.MultiReader(session.Out, session.Err))
 	}()
 
 	return port, session
@@ -100,11 +100,11 @@ func makeTCPClientInNS(netns string, address string, port int, numBytes int) {
 		cmd = exec.Command(echoClientBinaryPath, "--target", fmt.Sprintf("%s:%d", address, port), "--message", message)
 	}
 	cmd.Stdin = bytes.NewBuffer([]byte(message))
-	cmd.Stderr = GinkgoWriter
+	cmd.Stderr = ginkgo.GinkgoWriter
 	out, err := cmd.Output()
 
-	Expect(err).NotTo(HaveOccurred())
-	Expect(string(out)).To(Equal(message))
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	gomega.Expect(string(out)).To(gomega.Equal(message))
 }
 
 func createVeth(hostNs ns.NetNS, hostVethIfName string, containerNs ns.NetNS, containerVethIfName string, hostIP []byte, containerIP []byte, hostIfaceMTU int) {
@@ -160,7 +160,7 @@ func createVeth(hostNs ns.NetNS, hostVethIfName string, containerNs ns.NetNS, co
 
 		return nil
 	})
-	Expect(err).NotTo(HaveOccurred())
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 	err = containerNs.Do(func(_ ns.NetNS) error {
 		peerAddr := &net.IPNet{
@@ -191,7 +191,7 @@ func createVeth(hostNs ns.NetNS, hostVethIfName string, containerNs ns.NetNS, co
 		return nil
 	})
 
-	Expect(err).NotTo(HaveOccurred())
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 }
 
 func createVethInOneNs(netNS ns.NetNS, vethName, peerName string) {
@@ -214,7 +214,7 @@ func createVethInOneNs(netNS ns.NetNS, vethName, peerName string) {
 		}
 		return nil
 	})
-	Expect(err).NotTo(HaveOccurred())
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 }
 
 func createMacvlan(netNS ns.NetNS, master, macvlanName string) {
@@ -243,7 +243,7 @@ func createMacvlan(netNS ns.NetNS, master, macvlanName string) {
 		}
 		return nil
 	})
-	Expect(err).NotTo(HaveOccurred())
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 }
 
 func buildOneConfig(cniVersion string, orig *PluginConf, prevResult types.Result) ([]byte, error) {
@@ -256,7 +256,7 @@ func buildOneConfig(cniVersion string, orig *PluginConf, prevResult types.Result
 	// Add previous plugin result
 	if prevResult != nil {
 		r, err := prevResult.GetAsVersion(cniVersion)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		inject["prevResult"] = r
 	}
 
